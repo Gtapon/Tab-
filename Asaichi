@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>朝イチ起動セット</title>
+<style>
+  :root{
+    --bg:#f4f5f7;--card:#ffffff;--ink:#1c2026;--sub:#6b7280;--line:#e2e5ea;--soft:#f0f2f5;
+    --accent:#2f6fed;--accent-ink:#fff;--accent-soft:#e8efff;--ok:#16a34a;--warn:#b45309;--warn-bg:#fff6e5;--danger:#dc2626;
+    --shadow:0 1px 2px rgba(0,0,0,.04),0 4px 16px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --bg:#131518;--card:#1d2024;--ink:#e8eaed;--sub:#9aa0a6;--line:#30343a;--soft:#252a30;
+    --accent:#6c9cff;--accent-ink:#0b1020;--accent-soft:#1e2a45;--ok:#4ade80;--warn:#fbbf24;--warn-bg:#2a2210;--danger:#f87171;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 4px 16px rgba(0,0,0,.25);
+  }}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;font-size:14px}
+  main{max-width:1180px;margin:0 auto;padding:32px 20px 60px}
+  header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:24px}
+  .hello{font-size:26px;font-weight:700;margin:0}
+  .date{color:var(--sub);margin-top:4px}
+  .clock{font-size:40px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+  .sets{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;position:relative}
+  .card.rec{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft),var(--shadow)}
+  .top{display:flex;align-items:center;gap:10px}
+  .key{width:26px;height:26px;border-radius:7px;background:var(--soft);color:var(--sub);display:grid;place-items:center;font-size:12px;font-weight:700;flex:none}
+  .name{font-size:17px;font-weight:700;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{font-size:11px;font-weight:700;background:var(--accent);color:var(--accent-ink);border-radius:20px;padding:3px 9px;flex:none}
+  .meta{color:var(--sub);font-size:12px;display:flex;gap:10px;flex-wrap:wrap}
+  .pages{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--line);background:var(--soft);color:var(--ink);border-radius:20px;padding:5px 11px;font-size:12.5px;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip:hover{border-color:var(--accent)}
+  .chip.off{opacity:.5;cursor:default;border-style:dashed}
+  .checks{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:6px}
+  .checks .ttl{font-size:12px;color:var(--sub);display:flex;justify-content:space-between}
+  .checks label{display:flex;gap:8px;align-items:center;cursor:pointer;line-height:1.4}
+  .checks input{width:16px;height:16px;accent-color:var(--accent);flex:none}
+  .checks label.done span{color:var(--sub);text-decoration:line-through}
+  .actions{display:flex;gap:8px;margin-top:auto}
+  button{font:inherit;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;padding:9px 14px}
+  button:hover{border-color:var(--sub)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700;flex:1;font-size:15px;padding:11px 14px}
+  button.primary.setup{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+  button.ghost{background:transparent}
+  button.icon{padding:9px 12px}
+  .add{border:2px dashed var(--line);background:transparent;border-radius:16px;min-height:180px;color:var(--sub);font-size:15px}
+  .add:hover{border-color:var(--accent);color:var(--accent)}
+  .foot{margin-top:28px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;color:var(--sub);font-size:13px}
+  details{margin-top:18px;color:var(--sub);font-size:13px;line-height:1.8}
+  summary{cursor:pointer;font-weight:600;color:var(--ink)}
+  #bar{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--warn-bg);color:var(--warn);border:1px solid currentColor;border-radius:14px;padding:12px 14px 12px 18px;display:none;gap:12px;align-items:center;box-shadow:var(--shadow);max-width:calc(100% - 32px);z-index:5}
+  #bar.show{display:flex}
+  #bar.ok{background:var(--card);color:var(--ok)}
+  #bar button{flex:none}
+  /* editor */
+  dialog{border:none;border-radius:18px;padding:0;background:var(--card);color:var(--ink);width:min(720px,calc(100% - 24px));box-shadow:0 20px 60px rgba(0,0,0,.3)}
