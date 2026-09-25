@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>4分割ランチャー</title>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--ink:#1d2127;--sub:#6b7280;--line:#e3e6ea;--accent:#2f6fed;--accent-ink:#fff;--warn:#b45309;--warn-bg:#fff7e6;}
+  @media (prefers-color-scheme:dark){:root{--bg:#15171a;--card:#1f2226;--ink:#e8eaed;--sub:#9aa0a6;--line:#33373c;--accent:#6c9cff;--accent-ink:#0b1020;--warn:#fbbf24;--warn-bg:#2a2210;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Segoe UI","Hiragino Sans","Yu Gothic UI","Meiryo",sans-serif;}
+  main{max-width:760px;margin:0 auto;padding:40px 20px 60px;}
+  h1{font-size:22px;margin:0 0 4px}
+  p.lead{color:var(--sub);margin:0 0 24px;font-size:14px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px}
+  .slot{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .slot .pos{font-size:12px;color:var(--sub);margin-bottom:8px;font-weight:600}
+  .slot input{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ink);font-size:14px}
+  .slot input+input{margin-top:6px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;font-size:15px;padding:11px 20px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
+  button:disabled{opacity:.45;cursor:default}
+  label.opt{font-size:13px;color:var(--sub);display:flex;gap:6px;align-items:center}
+  #msg{margin-top:18px;font-size:14px;line-height:1.7}
+  .warn{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:12px 14px}
+  details{margin-top:28px;font-size:13px;color:var(--sub);line-height:1.8}
+  summary{cursor:pointer;font-weight:600;color:var(--ink)}
+  @media (max-width:560px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+  <h1>4分割ランチャー</h1>
+  <p class="lead">4つのページを、画面いっぱいに「上2枚・下2枚」で並べて開きます。URLはこのパソコンのブラウザに自動保存されます。</p>
+
+  <div class="grid" id="slots"></div>
+
+  <div class="row">
+    <button class="primary" id="open">4分割で開く</button>
+    <button id="next" style="display:none">▶ 残りを開く</button>
+    <button id="close">4つとも閉じる</button>
+    <label class="opt"><input type="checkbox" id="gap"> ウィンドウ間にすき間をあける</label>
+  </div>
+  <div id="msg"></div>
+
+  <details>
+    <summary>うまく開かないとき</summary>
+    <ul>
+      <li><b>1枚しか開かない：</b>2枚目以降がポップアップとしてブロックされています。アドレスバー右端のブロックのアイコンから「常に許可」を選ぶと、次からは4枚同時に開きます。許可できない場合は「▶ 残りを開く」を押すと、押すたびに1枚ずつ開きます。</li>
+      <li><b>モニターが複数あるとき：</b>このページを表示している画面に並びます。並べたい画面にこのページを移してから押してください。</li>
+      <li><b>開いたウィンドウ：</b>シンプルな表示の小さいウィンドウとして開きます。ページの操作やログインは普段どおりできます。</li>
+      <li><b>次から使うとき：</b>このファイルをブックマークしておけば、開いて1クリックで並びます。</li>
+    </ul>
+  </details>
+</main>
