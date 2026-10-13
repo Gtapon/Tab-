@@ -160,7 +160,7 @@ function BMREC() {
       try {
         if (l.k === 'id') { return doc.getElementById(l.v); }
         if (l.k === 'css') { return doc.querySelector(l.v); }
-        if (l.k === 'xpath') { return doc.evaluate(l.v, doc, null, 9, null).singleNodeValue; }
+        if (l.k === 'xpath') { return doc.evaluate ? doc.evaluate(l.v, doc, null, 9, null).singleNodeValue : null; }
       } catch (e) { }
       return null;
     }
@@ -187,7 +187,14 @@ function BMREC() {
         if (onWin) { onWin(d.defaultView); }
         doc = d;
       }
-      return q(doc, step.l);
+      /* Shadow DOM（Webコンポーネント）の中の要素 */
+      var root = doc, sh = step.sh || [];
+      for (var j = 0; j < sh.length; j++) {
+        var host = q(root, sh[j]);
+        if (!host || !host.shadowRoot) { return null; }
+        root = host.shadowRoot;
+      }
+      return q(root, step.l);
     }
     function vis(el) {
       try {
@@ -255,16 +262,89 @@ function BMREC() {
       var d = Object.getOwnPropertyDescriptor(P.prototype, 'value');
       if (d && d.set) { d.set.call(el, v); } else { el.value = v; }
     }
-    function typeIn(el, v) {
-      var last = v ? v.slice(-1) : 'Backspace';
+    function txt(el) { return !!el && el.nodeType === 1 && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|file|image|hidden|range|color)$/i.test(el.type))); }
+    function deepAct(doc) {
+      var a = doc.activeElement;
+      for (var g = 0; g < 20 && a; g++) {
+        if (a.shadowRoot && a.shadowRoot.activeElement) { a = a.shadowRoot.activeElement; continue; }
+        if (/^(IFRAME|FRAME)$/.test(a.tagName)) { var d = null; try { d = a.contentDocument; } catch (e) { } if (d && d.activeElement) { a = d.activeElement; continue; } }
+        break;
+      }
+      return a;
+    }
+    function curVal(el, ce) { return ce ? String(el.innerText || el.textContent || '').replace(/\n+$/, '') : el.value; }
+    function loose(a, b) {
+      var f = function (x) {
+        return String(x == null ? '' : x).replace(/[\uFF01-\uFF5E]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+          .replace(/[\s,\-\u30FC\u2010-\u2015\u2212()\/.:_]/g, '').toLowerCase();
+      };
+      return f(a) === f(b);
+    }
+    function selAll(el, ce) {
+      try {
+        if (ce) {
+          var d = el.ownerDocument, r = d.createRange(), sl = d.defaultView.getSelection();
+          r.selectNodeContents(el); sl.removeAllRanges(); sl.addRange(r);
+        } else if (el.select) { el.select(); }
+      } catch (e) { }
+    }
+    function execIns(el, t) {
+      /* execCommand は本物のキー入力と同じく beforeinput → input を発火させる */
+      try { return t === '' ? el.ownerDocument.execCommand('delete', false) : el.ownerDocument.execCommand('insertText', false, t); } catch (e) { return false; }
+    }
+    function typeChars(el, v, ce, gap) {
+      var i = 0;
+      selAll(el, ce); execIns(el, '');
+      function one() {
+        if (i >= v.length) { return Promise.resolve(); }
+        var ch = v.charAt(i++);
+        var a = kev(el, 'keydown', ch), b = a ? kev(el, 'keypress', ch) : false;
+        if (a && b) { execIns(el, ch); }
+        kev(el, 'keyup', ch);
+        return (gap ? sleep(gap) : Promise.resolve()).then(one);
+      }
+      return one();
+    }
+    function typeIn(el, v, s) {
+      s = s || {};
       click(el);
-      try { if (el.select) { el.select(); } } catch (e) { }
-      kev(el, 'keydown', last);
-      setVal(el, v);
-      fire(el, 'input');
-      kev(el, 'keyup', last);
-      fire(el, 'change');
-      try { el.blur(); } catch (e) { }
+      var doc = el.ownerDocument;
+      var ce = !txt(el) && !!el.isContentEditable;
+      var pre = (!txt(el) && !ce) ? sleep(250) : Promise.resolve();
+      return pre.then(function () {
+        if (!txt(el) && !ce) {
+          /* クリックすると入力枠が出るタイプ：出てきた入力欄（フォーカス中）に入力する */
+          var a = deepAct(doc);
+          if (a && a !== doc.body && (txt(a) || a.isContentEditable)) { el = a; }
+          else {
+            var inner = el.querySelector ? el.querySelector('input:not([type=hidden]),textarea,[contenteditable]:not([contenteditable=false])') : null;
+            if (inner) { el = inner; click(el); }
+            else if (el.tagName !== 'SELECT') { throw new Error('入力できる欄が見つかりません（クリック後に入力枠が出ない）'); }
+          }
+          ce = !txt(el) && !!el.isContentEditable;
+        }
+        focus(el);
+        if (s.raw) { return false; }
+        if (s.slow) { return typeChars(el, v, ce, 40).then(function () { return loose(curVal(el, ce), v); }); }
+        selAll(el, ce);
+        if (execIns(el, v) && loose(curVal(el, ce), v)) { return true; }
+        if (!v) { return loose(curVal(el, ce), v); }
+        /* まとめて入らない欄（入力マスク等）は1文字ずつ */
+        return typeChars(el, v, ce, 0).then(function () { return loose(curVal(el, ce), v); });
+      }).then(function (ok) {
+        if (!ok) {
+          /* 従来の方法：値を直接セットしてイベントを発火 */
+          var last = v ? v.slice(-1) : 'Backspace', w = doc.defaultView;
+          selAll(el, ce);
+          kev(el, 'keydown', last);
+          try { el.dispatchEvent(new w.InputEvent('beforeinput', { bubbles: true, cancelable: true, composed: true, inputType: 'insertReplacementText', data: v })); } catch (e) { }
+          if (!loose(curVal(el, ce), v)) { if (ce) { el.textContent = v; } else { setVal(el, v); } }
+          fire(el, 'input');
+          kev(el, 'keyup', last);
+        }
+        if (!ce) { fire(el, 'change'); }
+        if (!s.nb) { try { el.blur(); } catch (e) { } }
+      });
     }
     function choose(el, s) {
       var o = el.options, idx = -1, i;
@@ -545,7 +625,7 @@ function BMREC() {
           getVal = Promise.resolve(s.v);
         }
         return getVal.then(function (v) {
-          typeIn(el, v == null ? '' : String(v));
+          return typeIn(el, v == null ? '' : String(v), s);
         });
       }
       else if (s.t === 'select') { choose(el, s); return Promise.resolve(); }
@@ -704,7 +784,13 @@ function BMREC() {
       patch(window);
       function next() {
         if (i >= n) { toast('✔ 完了（' + n + '手順）', 'ok'); if (opt.onDone) { opt.onDone(); } return Promise.resolve(true); }
-        var s = steps[i];
+        var s = steps[i], nx = steps[i + 1];
+        if (s.t === 'input' && nx && nx.t === 'key') {
+          /* 直後にキー操作（Enter 等）がある入力は、フォーカスを外さない */
+          var s2 = {}, kk;
+          for (kk in s) { s2[kk] = s[kk]; }
+          s2.nb = 1; s = s2;
+        }
         if (opt.onStep) { opt.onStep(i); }
         toast('▶ ' + (i + 1) + '/' + n + '  ' + (s.d || s.t));
         var p;
@@ -757,7 +843,7 @@ function BMREC() {
         }
         else if (s.t === 'showbox') { showFloatingBox(s.title || '取得データ', s.vars || s.varName); p = Promise.resolve(); }
         else if (s.t === 'close_tab') { try { window.close(); } catch(e){} p = Promise.resolve(); }
-        else { p = find(s, timeout, patch).then(function (el) { return act(el, s); }); }
+        else { p = (function (st) { return find(st, timeout, patch).then(function (el) { return act(el, st); }); })(s); }
         return p.then(function () { i++; return sleep(delay); }).then(next);
       }
       return next().catch(function (e) {
@@ -862,6 +948,8 @@ function BMREC() {
       '<details class="box help"><summary>使い方・ヒント</summary><ul>',
       '<li>● 録画開始 → ページを操作すると手順が記録されます（クリック／入力／プルダウン／チェック・ラジオ／Enter）。</li>',
       '<li>ホバーで開くメニューは、要素にマウスを乗せて <b>Alt+Shift+H</b> で「ホバー」手順を記録。</li>',
+      '<li>入力が記録されない欄は、マウスを乗せて <b>Alt+Shift+I</b> → 値を入力で「入力」手順を手動追加できます（クリックで入力枠が出るタイプは、枠が出る前の表示部分に乗せてもOK）。</li>',
+      '<li>再生で値が入らない欄は、その行の <b>⌨1文字ずつ</b> にチェックすると1文字ずつキー入力します。</li>',
       '<li>ページ遷移すると「遷移」区切りが入ります。遷移先でレコーダーのブックマークレットをもう一度クリックすると続きを録画できます。ブックマークレットは区切りごとに生成されます。</li>',
       '<li>🔍 = ページ上で対象要素を枠で表示、▶ = その1手順だけ実行、{} = JSONで直接編集（l：要素の探し方を上から順に試す／f：フレームの道筋）。</li>',
       '<li>画面の切替が遅い所は「＋待機」を入れて↑↓で位置を調整。要素は最大「要素待ち」ms まで出現を待ちます。</li>',
@@ -978,7 +1066,8 @@ function BMREC() {
         if (s.t === 'input') {
           var promptChk = '<label style="font-size:11px;color:#006064;margin-left:4px;" title="実行時にプロンプトを出して手入力させる"><input type="checkbox" data-a="isprompt"' + (s.isPrompt ? ' checked' : '') + '>💬都度入力</label>';
           var promptInput = s.isPrompt ? ' <input class="v" data-a="pmsg" placeholder="ダイアログの質問文" value="' + esc(s.promptMsg || '') + '" title="ダイアログに表示する質問文">' : '';
-          v = '<input class="v" data-a="v" placeholder="' + (s.isPrompt ? '初期値(任意)' : '入力値') + '" value="' + esc(s.v) + '"' + (s.pw ? ' type="password" placeholder="パスワード"' : '') + '>' + promptChk + promptInput;
+          v = '<input class="v" data-a="v" placeholder="' + (s.isPrompt ? '初期値(任意)' : '入力値') + '" value="' + esc(s.v) + '"' + (s.pw ? ' type="password" placeholder="パスワード"' : '') + '>' + promptChk + promptInput +
+            '<label style="font-size:11px;color:#5d4037;margin-left:4px;" title="入らない欄向け：1文字ずつキー入力する"><input type="checkbox" data-a="slow"' + (s.slow ? ' checked' : '') + '>⌨1文字ずつ</label>';
         }
         else if (s.t === 'select') { v = '<input class="v" data-a="x" value="' + esc(s.x) + '" title="選択肢の表示テキスト（変更すると表示テキストで選択）">'; }
         else if (s.t === 'check') { v = '<label><input type="checkbox" data-a="c"' + (s.v ? ' checked' : '') + '>ON</label>'; }
@@ -992,7 +1081,8 @@ function BMREC() {
         else if (s.t === 'open_child' || s.t === 'nav_child') { v = '<input class="v u" data-a="url" placeholder="' + (s.t === 'open_child' ? 'URL（空=直前のリンク先）' : '遷移先URL（必須）') + '" value="' + esc(s.url || '') + '" title="子画面のURL（相対パスも可）">'; }
         else if (s.t === 'copy') { v = '変数: <input class="v n" data-a="vn" value="' + esc(s.varName || 'default') + '">'; }
         else if (s.t === 'showbox') { v = '変数: <input class="v n" data-a="vn" value="' + esc(s.varName || 'default') + '">'; }
-        var fr = s.f && s.f.length ? '<span class="fr" title="フレーム内の要素">枠' + s.f.length + '</span>' : '';
+        var fr = (s.f && s.f.length ? '<span class="fr" title="フレーム内の要素">枠' + s.f.length + '</span>' : '') +
+          (s.sh && s.sh.length ? '<span class="fr" title="Shadow DOM（部品）内の要素">部品' + s.sh.length + '</span>' : '');
         if (ELEM_T[s.t]) { v += ' <label class="wc" title="この手順を子画面の中で実行する"><input type="checkbox" data-a="win"' + (s.win === 'child' ? ' checked' : '') + '>🪟子</label>'; }
         var cls = 'step t-' + s.t + (s.win === 'child' ? ' child' : '') + (running === i ? ' running' : '') + (errRow === i ? ' err' : '');
         var hasLoc = ELEM_T[s.t] && s.l && s.l.length && !s.focus;
@@ -1258,6 +1348,7 @@ function BMREC() {
       else if (a === 'vn') { s.varName = t.value; }
       else if (a === 'isprompt') { s.isPrompt = t.checked; render(); return; }
       else if (a === 'pmsg') { s.promptMsg = t.value; }
+      else if (a === 'slow') { if (t.checked) { s.slow = 1; } else { delete s.slow; } }
       else if (a === 'k') { s.k = t.value || 'Enter'; if (s.manual) { s.d = keyDesc(s); } render(); return; }
       else if (a === 'kn') { s.n = Math.max(1, Math.min(100, +t.value || 1)); if (s.manual) { s.d = keyDesc(s); } render(); return; }
       else if (a === 'kcss') {
@@ -1341,16 +1432,17 @@ function BMREC() {
     return "concat('" + s.split("'").join("',\"'\",'") + "')";
   }
   function cssEsc(s) { var C = W.CSS; return C && C.escape ? C.escape(s) : String(s).replace(/([^a-zA-Z0-9_-])/g, '\\$1'); }
+  function rootOf(el) { var r = el.getRootNode ? el.getRootNode() : null; return r && r.host ? r : el.ownerDocument; }
   function cnt(doc, l) {
     try {
       if (l.k === 'id') { return doc.querySelectorAll('[id=' + q2(l.v) + ']').length; }
       if (l.k === 'css') { return doc.querySelectorAll(l.v).length; }
-      if (l.k === 'xpath') { return doc.evaluate('count(' + l.v + ')', doc, null, 1, null).numberValue; }
+      if (l.k === 'xpath') { return doc.evaluate ? doc.evaluate('count(' + l.v + ')', doc, null, 1, null).numberValue : 0; }
     } catch (e) { }
     return 0;
   }
   function cssPath(el) {
-    var doc = el.ownerDocument, parts = [];
+    var doc = rootOf(el), parts = [];
     while (el && el.nodeType === 1) {
       var tag = el.tagName.toLowerCase();
       if (el.id && cnt(doc, { k: 'id', v: el.id }) === 1) { parts.unshift('#' + cssEsc(el.id)); break; }
@@ -1365,7 +1457,7 @@ function BMREC() {
     return parts.join(' > ');
   }
   function locs(el) {
-    var doc = el.ownerDocument, tag = el.tagName.toLowerCase(), out = [], seen = {};
+    var doc = rootOf(el), tag = el.tagName.toLowerCase(), out = [], seen = {};
     function add(l) {
       var key = l.k + '|' + l.v;
       if (seen[key]) { return true; }
@@ -1376,7 +1468,7 @@ function BMREC() {
     /* ラジオ/チェックボックスの場合、ラベル側のテキストXPathやfor属性も優先ロケータに追加 */
     if (tag === 'input' && /^(radio|checkbox)$/i.test(el.type)) {
       var lblEl = el.closest ? el.closest('label') : null;
-      if (!lblEl && el.id) { lblEl = doc.querySelector('label[for="' + el.id + '"]'); }
+      if (!lblEl && el.id) { try { lblEl = doc.querySelector('label[for="' + cssEsc(el.id) + '"]'); } catch (e) { } }
       if (lblEl) {
         var lt = ntext(lblEl);
         if (lt && lt.length <= 60) {
@@ -1403,7 +1495,7 @@ function BMREC() {
       var xp = '//' + tag + '[normalize-space(.)=' + xq(t) + ']';
       if (!add({ k: 'xpath', v: xp })) {
         try {
-          var all = doc.evaluate(xp, doc, null, 7, null);
+          var all = doc.evaluate ? doc.evaluate(xp, doc, null, 7, null) : { snapshotLength: 0 };
           for (var i = 0; i < all.snapshotLength; i++) { if (all.snapshotItem(i) === el) { add({ k: 'xpath', v: '(' + xp + ')[' + (i + 1) + ']' }); break; } }
         } catch (e) { }
       }
@@ -1492,7 +1584,122 @@ function BMREC() {
       setTimeout(function () { if (o.parentNode) { o.parentNode.removeChild(o); } }, 1400);
     } catch (e) { }
   }
-  function emit(step, el) { post({ type: 'step', step: step }); if (el) { flash(el); } }
+  function shChain(el) {
+    var hosts = [], r = el.getRootNode ? el.getRootNode() : null;
+    while (r && r.host) { hosts.unshift(r.host); r = r.host.getRootNode(); }
+    return hosts.map(function (h) { return locs(h); });
+  }
+  var reveal = null, downSeq = 0;
+  function settleReveal() {
+    /* テキスト欄クリックの判定を確定させる（他の手順より先に並べるため） */
+    var r = reveal;
+    if (!r) { return; }
+    reveal = null;
+    clearTimeout(r.timer);
+    try { if (r.mo) { r.mo.disconnect(); } } catch (e) { }
+    if (!rec || r.seq !== downSeq) { return; }
+    var a = deepActive(r.ti.ownerDocument);
+    var moved = a && a.nodeType === 1 && a !== r.ti && a !== r.ti.ownerDocument.body && !mine(a);
+    if (moved || r.n > 0 || !r.ti.isConnected) { emit(r.st, r.ti.isConnected ? r.ti : null); }
+  }
+  function settlePend() {
+    var p = pend;
+    if (!p) { return; }
+    pend = null; clearTimeout(pendTimer);
+    emit(p.step, p.el);
+  }
+  function emit(step, el, noFlash) {
+    if (reveal && reveal.st !== step) { settleReveal(); }
+    if (pend && pend.step !== step) { settlePend(); }
+    if (el && el.nodeType === 1 && !step.sh) { try { var sc = shChain(el); if (sc.length) { step.sh = sc; } } catch (e) { } }
+    post({ type: 'step', step: step });
+    if (el && !noFlash) { flash(el); }
+  }
+  /* composedPath で Shadow DOM 内の本当の要素を取る */
+  function tgt(e) {
+    try {
+      var pp = e.composedPath && e.composedPath();
+      if (pp && pp.length && pp[0]) { var x = pp[0]; return x.nodeType === 1 ? x : (x.parentElement || e.target); }
+    } catch (er) { }
+    return e.target;
+  }
+  function isText(t) { return !!t && t.nodeType === 1 && (t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|file|image|hidden|range|color)$/i.test(t.type))); }
+  function ceHost(t) {
+    if (!t || t.nodeType !== 1 || !t.isContentEditable || isText(t)) { return null; }
+    var hst = t;
+    while (hst.parentElement && hst.parentElement.isContentEditable) { hst = hst.parentElement; }
+    return hst;
+  }
+  function deepActive(doc) {
+    var a = doc.activeElement;
+    while (a && a.shadowRoot && a.shadowRoot.activeElement) { a = a.shadowRoot.activeElement; }
+    return a;
+  }
+  function shown(el) { try { var r = el.getBoundingClientRect(); return el.isConnected && (r.width > 0 || r.height > 0); } catch (e) { return false; } }
+  function mine(t) { return !!(t && t.closest && t.closest('[data-bmrec]')); }
+  function recCe(hst, path) {
+    var v = String(hst.innerText || hst.textContent || '').replace(/\n+$/, '');
+    if (hst[KEY + 'v'] === v) { return; }
+    hst[KEY + 'v'] = v;
+    emit({ t: 'input', ce: 1, f: path, l: locs(hst), v: v, d: desc(hst) + '（編集エリア）' }, hst);
+  }
+  /* 入力中の欄（beforeinput 等でサイトが自前処理して change が出ない欄も拾う） */
+  var editPend = null, editTimer = null;
+  function flushEdit() {
+    clearTimeout(editTimer);
+    var ep = editPend; editPend = null;
+    if (!ep || !rec) { return; }
+    if (ep.ce) { recCe(ep.t, ep.path); } else { recInput(ep.t, ep.path); }
+  }
+  function onInputEv(e, path) {
+    if (!rec || !e.isTrusted) { return; }
+    var t = tgt(e);
+    if (!t || mine(t)) { return; }
+    var hst = isText(t) ? null : ceHost(t);
+    if (!isText(t) && !hst) { return; }
+    var tt = hst || t;
+    if (editPend && editPend.t !== tt) { flushEdit(); }
+    editPend = { t: tt, path: path, ce: !!hst };
+    clearTimeout(editTimer);
+    editTimer = setTimeout(flushEdit, 1500);
+  }
+  function onFocusIn(e) {
+    var t = tgt(e);
+    if (isText(t)) { t[KEY + 'f'] = t.value; return; }
+    var hst = ceHost(t);
+    if (hst) { hst[KEY + 'f'] = String(hst.innerText || ''); }
+  }
+  function onFocusOut(e, path) {
+    if (!rec) { return; }
+    var t = tgt(e);
+    if (!t || t.nodeType !== 1 || mine(t)) { return; }
+    var hst = isText(t) ? null : ceHost(t);
+    if (editPend && editPend.t === (hst || t)) { flushEdit(); return; }
+    if (isText(t)) { if (t[KEY + 'f'] !== undefined && t.value !== t[KEY + 'f']) { recInput(t, path); } }
+    else if (hst && hst[KEY + 'f'] !== undefined && String(hst.innerText || '') !== hst[KEY + 'f']) { recCe(hst, path); }
+  }
+  /* テキスト欄のクリックで別の入力枠やポップアップが出た場合は、そのクリックも記録 */
+  function watchReveal(ti, path) {
+    settleReveal();
+    var doc = ti.ownerDocument;
+    var st = { t: 'click', f: path, l: locs(ti), d: desc(ti) + '（クリックで入力枠を開く）' }, sc = shChain(ti);
+    if (sc.length) { st.sh = sc; }
+    var r = { ti: ti, st: st, n: 0, mo: null, seq: downSeq, timer: null };
+    try {
+      r.mo = new doc.defaultView.MutationObserver(function (ms) {
+        ms.forEach(function (m) {
+          var mt = m.target;
+          if (mt.nodeType !== 1 || mine(mt) || mt === ti || (mt.contains && mt.contains(ti))) { return; }
+          if (m.type === 'childList') {
+            for (var i = 0; i < m.addedNodes.length; i++) { var an = m.addedNodes[i]; if (an.nodeType === 1 && !(an.hasAttribute && an.hasAttribute('data-bmrec'))) { r.n++; } }
+          } else { r.n++; }
+        });
+      });
+      r.mo.observe(doc.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden', 'open', 'aria-hidden', 'aria-expanded'] });
+    } catch (e) { }
+    reveal = r;
+    r.timer = setTimeout(function () { if (reveal === r) { settleReveal(); } }, 400);
+  }
   function makeStep(el, path) {
     if (el.tagName === 'INPUT' && /^(checkbox|radio)$/i.test(el.type)) {
       var nextVal = el.type.toLowerCase() === 'radio' ? true : !el.checked;
@@ -1511,15 +1718,27 @@ function BMREC() {
   }
   function onDown(e, path) {
     if (!rec || !e.isTrusted || e.button !== 0) { return; }
-    var el = clickable(e.target);
-    if (!el) { pend = null; return; }
-    pend = { step: makeStep(el, path), el: el, rawTarget: e.target };
+    var raw = tgt(e);
+    if (mine(raw)) { return; }
+    flushEdit();
+    if (reveal) { settleReveal(); }
+    if (pend) { settlePend(); }
+    downSeq++;
+    var el = clickable(raw);
+    if (!el) {
+      pend = null;
+      if (isText(raw) && !raw.readOnly) { watchReveal(raw, path); }
+      return;
+    }
+    pend = { step: makeStep(el, path), el: el, rawTarget: raw };
   }
   function onUp(e) {
     if (!pend) { return; }
-    var p = pend;
-    if (!matchTarget(p.el, e.target) && !matchTarget(p.rawTarget, e.target)) {
-      pend = null; return;
+    var p = pend, ut = tgt(e);
+    if (!matchTarget(p.el, ut) && !matchTarget(p.rawTarget, ut)) {
+      /* 押した瞬間に要素が消えた／入れ替わった（入力枠に切り替わる等）場合は、すぐ記録する */
+      if (shown(p.el)) { pend = null; return; }
+      settlePend(); return;
     }
     clearTimeout(pendTimer);
     pendTimer = setTimeout(function () {
@@ -1528,13 +1747,13 @@ function BMREC() {
   }
   function onClick(e, path, dbl) {
     if (!rec || !e.isTrusted) { return; }
-    if (dbl) { var dd = clickable(e.target); if (dd) { emit({ t: 'dblclick', f: path, l: locs(dd), d: desc(dd) }, dd); } return; }
+    if (dbl) { var dd = clickable(tgt(e)); if (dd) { emit({ t: 'dblclick', f: path, l: locs(dd), d: desc(dd) }, dd); } return; }
     if (pend) {
       var p = pend; pend = null; clearTimeout(pendTimer);
       emit(p.step, p.el);
       return;
     }
-    var el = clickable(e.target);
+    var el = clickable(tgt(e));
     if (el) { emit(makeStep(el, path), el); }
   }
   function recInput(t, path) {
@@ -1547,8 +1766,9 @@ function BMREC() {
   }
   function onChange(e, path) {
     if (!rec || !e.isTrusted) { return; }
-    var t = e.target;
-    if (!t || !t.tagName || (t.closest && t.closest('[data-bmrec]'))) { return; }
+    var t = tgt(e);
+    if (!t || !t.tagName || mine(t)) { return; }
+    if (editPend && editPend.t !== t) { flushEdit(); }
     var tag = t.tagName, ty = String(t.type || '').toLowerCase();
     if (tag === 'SELECT') {
       var o = t.options[t.selectedIndex];
@@ -1565,6 +1785,21 @@ function BMREC() {
   }
   function onKey(e, path) {
     if (!e.isTrusted || !rec) { return; }
+    if (e.altKey && e.shiftKey && e.code === 'KeyI') {
+      e.preventDefault();
+      var hb = lastHover && lastHover.el;
+      if (hb && hb.nodeType === 1) {
+        var ip = isText(hb) ? hb : (ceHost(hb) || (hb.querySelector && hb.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=radio]),textarea,[contenteditable]:not([contenteditable=false])')) || hb);
+        var cv0 = isText(ip) ? ip.value : String(ip.innerText || '').replace(/\n+$/, '');
+        var mv = prompt('この要素に入力する値を入れてください\n対象: ' + desc(ip), cv0);
+        if (mv !== null) {
+          var ms = { t: 'input', f: lastHover.path, l: locs(ip), v: mv, d: desc(ip) + '（手動追加）' };
+          if (!isText(ip) && ip.isContentEditable) { ms.ce = 1; }
+          emit(ms, ip);
+        }
+      }
+      return;
+    }
     if (e.altKey && e.shiftKey && e.code === 'KeyH') {
       e.preventDefault();
       if (lastHover && lastHover.el && lastHover.el.nodeType === 1) {
@@ -1584,11 +1819,13 @@ function BMREC() {
       }
       return;
     }
-    var t = e.target;
+    var t = tgt(e);
     if (e.key === 'Enter' && t && t.tagName === 'INPUT' && !/^(button|submit|reset|checkbox|radio|file|image)$/i.test(t.type)) {
       if (e.isComposing || e.keyCode === 229) { return; }
+      if (editPend && editPend.t !== t) { flushEdit(); }
       recInput(t, path);
-      emit({ t: 'key', f: path, l: locs(t), k: 'Enter', d: desc(t) + ' で Enter' }, null);
+      if (editPend && editPend.t === t) { clearTimeout(editTimer); editPend = null; }
+      emit({ t: 'key', f: path, l: locs(t), k: 'Enter', d: desc(t) + ' で Enter' }, t, true);
     }
   }
   function hookDoc(doc, path) {
@@ -1600,8 +1837,11 @@ function BMREC() {
       click: function (e) { onClick(e, path, false); },
       dblclick: function (e) { onClick(e, path, true); },
       change: function (e) { onChange(e, path); },
+      input: function (e) { onInputEv(e, path); },
+      focusin: function (e) { onFocusIn(e); },
+      focusout: function (e) { onFocusOut(e, path); },
       keydown: function (e) { onKey(e, path); },
-      mouseover: function (e) { lastHover = { el: e.target, path: path }; }
+      mouseover: function (e) { lastHover = { el: tgt(e), path: path }; }
     };
     var k, item = { doc: doc, h: h, mo: null };
     for (k in h) { doc.addEventListener(k, h[k], true); }
