@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>顧客ID一括取得 インストール</title>
+<style>
+  body { font: 15px/1.7 "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; max-width: 760px; margin: 36px auto; padding: 0 16px; color: #1f2329; background: #fff; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 17px; margin-top: 28px; border-bottom: 1px solid #dde1e6; padding-bottom: 4px; }
+  a.bm { display: inline-block; padding: 9px 20px; background: #1c58d9; color: #fff; border-radius: 6px; text-decoration: none; font-weight: 600; }
+  textarea { width: 100%; height: 110px; font: 12px Consolas, monospace; box-sizing: border-box; }
+  code { background: #f1f2f4; padding: 1px 5px; border-radius: 3px; }
+  .note { color: #6b7280; font-size: 13px; }
+  .safe { background: #f1f8e9; border: 1px solid #c5e1a5; border-radius: 6px; padding: 8px 14px; }
+  li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<h1>顧客ID一括取得</h1>
+<p class="note">8桁の顧客IDをまとめて貼り付け → 顧客ページを順番に子ページで開いて文字を取得 → 表にまとめます。</p>
+
+<h2>インストール</h2>
+<p>下のボタンを<strong>ブックマークバーにドラッグ＆ドロップ</strong>してください。</p>
+<p><a class="bm" id="bm" href="#">🔎 顧客ID一括取得</a> <button id="copyBm">コードをコピー</button> <span id="bmInfo" class="note"></span></p>
+<p class="note">ドラッグできない場合は、適当なページをブックマークしてから URL 欄を下のコードに書き換えてください。</p>
+<textarea id="bmCode" readonly></textarea>
+
+<h2>使い方</h2>
+<ol>
+  <li><b>顧客ページと同じサイト</b>のタブ（ログイン済み）でブックマークをクリックします。操作パネルが子ページで開きます。</li>
+  <li>「顧客ページのURL」に、顧客IDの手前までのURLを入れます（例：<code>https://example.com/customer/detail?id=</code>）。途中にIDが入る場合は <code>{id}</code> と書きます（例：<code>https://example.com/c/{id}/info</code>）。</li>
+  <li>「取得する項目」を決めます。
+    <ul>
+      <li><b>📍ページで選ぶ</b>：見本の顧客ページが開くので、取りたい文字をクリックするだけで列が追加されます（続けて何個でも）。</li>
+      <li>手入力する場合は「項目名の右/下の値」に <code>契約状態</code> のように<b>画面上の見出し</b>を書くと、その横（下）の値を取ります。</li>
+      <li>何も設定しなければ「ページ全体の文字」を取ります。</li>
+    </ul>
+  </li>
+  <li>顧客IDを改行区切りで貼り付けて「表にセット」。<b>8桁でまとまった数字だけ</b>が残り、それ以外（記号・名前・桁違いの数字）は自動で消えます。</li>
+  <li>「▶ 開始」で、上から順に子ページを開いて文字を取得し、IDの右に入れていきます。終わると子ページは閉じます。</li>
+  <li>「📋 Excel用コピー」でそのまま Excel に貼り付けられます。</li>
+</ol>
+<p class="note">止まった行（✖）はその行の ▶ で取り直せます。「▶ 開始」をもう一度押すと、未取得・エラーの行だけを続きから処理します。</p>
+
+<h2>安全性について</h2>
+<div class="safe">
+<ul>
+  <li>外部への通信は一切しません。開くのは、入力したURLの顧客ページ（同じサイト）だけです。</li>
+  <li>取得した顧客情報は操作パネルの中だけに保持し、ブラウザには保存しません（パネルを閉じると消えます）。</li>
+  <li>ブラウザに保存するのは「URL」と「取得する項目の設定」だけです。</li>
+</ul>
+</div>
+
+<script>
+function CIDKIT() {
+  var W = window;
+  try { if (W.__cidkitWin && !W.__cidkitWin.closed && W.__cidkitWin.__CIDKIT) { W.__cidkitWin.focus(); return; } } catch (e) { }
+
+  /* ================= 操作パネル（子ページ）で動くコード ================= */
+  function PANEL() {
+    window.__CIDKIT = true;
+    var D = document, LS = 'cidkit_settings_v1';
+    var TYPES = [['label', '項目名の右/下の値'], ['css', 'CSSで指定'], ['regex', '正規表現'], ['all', 'ページ全体の文字']];
+    function $(id) { return D.getElementById(id); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+    function uid() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+    function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+    var S = { url: '', cols: [], wait: 800, itemWait: 3000, timeout: 20000, mode: 'win', dedupe: true, keepOpen: false };
+    try { var sv = JSON.parse(localStorage.getItem(LS) || 'null'); if (sv) { for (var k in sv) { S[k] = sv[k]; } } } catch (e) { }
+    function defCol() { return { key: uid(), name: 'ページの文字', type: 'all', v: '', def: 1 }; }
+    if (!S.cols || !S.cols.length) { S.cols = [defCol()]; }
+    function save() { try { localStorage.setItem(LS, JSON.stringify(S)); } catch (e) { } }
+    var rows = [], running = false, stopReq = false, child = null, pickStop = null;
+
+    /* ---------- 見た目 ---------- */
+    var st = D.createElement('style');
+    st.textContent = [
+      ':root{--bg:#f4f6f9;--card:#fff;--fg:#1f2329;--sub:#6b7280;--line:#dde1e6;--acc:#1c58d9;--ok:#2e7d32;--warn:#e65100;--err:#c62828}',
+      '*{box-sizing:border-box}',
+      'body{margin:0;font:13px/1.5 "Segoe UI","Yu Gothic UI",Meiryo,sans-serif;background:var(--bg);color:var(--fg)}',
+      'header{position:sticky;top:0;z-index:5;background:#1f2937;color:#fff;padding:8px 12px;display:flex;align-items:center;gap:10px}',
+      'header b{font-size:14px}#prog{flex:1;font-size:12px;opacity:.9}',
+      '.bar{height:4px;background:#374151;position:sticky;top:38px;z-index:5}.bar i{display:block;height:100%;width:0;background:#4ade80;transition:width .2s}',
+      'section{background:var(--card);margin:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px}',
+      'h3{margin:0 0 6px;font-size:13px;color:#374151}',
+      'input[type=text],input[type=number],select,textarea{font:inherit;color:var(--fg);background:#fff;border:1px solid #c9ced6;border-radius:5px;padding:5px 7px}',
+      'input[type=text]{width:100%}input[type=number]{width:90px}',
+      'textarea{width:100%;height:110px;font-family:Consolas,monospace;resize:vertical}',
+      'button{font:inherit;padding:4px 10px;border:1px solid #c9ced6;border-radius:5px;background:#fff;color:var(--fg);cursor:pointer;white-space:nowrap}',
+      'button:hover{background:#eef3fe}button:disabled{opacity:.5;cursor:default}',
+      'button.pri{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}button.pri:hover{background:#1647b3}',
+      'button.dan{color:var(--err)}',
+      '.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:6px 0}',
+      '.hint{color:var(--sub);font-size:12px}',
+      '.col{display:flex;gap:4px;align-items:center;margin:4px 0}',
+      '.col .nm{width:120px;flex:none}.col select{flex:none}.col .vv{flex:1;min-width:80px}',
+      '.col button{padding:2px 6px}',
+      'details summary{cursor:pointer;color:#374151;font-weight:600;margin-top:6px}',
+      'details label{margin-right:12px;white-space:nowrap}',
+      '.tw{overflow:auto;max-height:60vh;border:1px solid var(--line);border-radius:6px}',
+      'table{border-collapse:collapse;width:100%;background:#fff}',
+      'th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:left;vertical-align:top}',
+      'th{position:sticky;top:0;background:#f0f2f5;font-size:12px;z-index:1;white-space:nowrap}',
+      'td.id{font-family:Consolas,monospace;white-space:nowrap}td.no{color:var(--sub);text-align:right;width:28px}',
+      'td.st{width:28px;text-align:center}td.ops{white-space:nowrap;width:1%}td.ops button{padding:0 5px;font-size:12px}',
+      '.cell{white-space:pre-wrap;overflow-wrap:anywhere;max-height:6.5em;overflow:auto;min-width:80px}',
+      'tr.run{background:#fff8e1}tr.err{background:#ffebee}tr.warn{background:#fff3e0}',
+      '.empty{color:var(--sub);text-align:center;padding:16px}',
+      '#toast{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);background:#333;color:#fff;padding:7px 14px;border-radius:16px;display:none;z-index:9;max-width:92%}',
+      '#toast.err{background:var(--err)}'
+    ].join('');
+    D.head.appendChild(st);
+    D.title = '顧客ID一括取得';
+    var root = D.createElement('div');
+    root.innerHTML = [
+      '<header><b>🔎 顧客ID一括取得</b><span id="prog"></span></header>',
+      '<div class="bar"><i id="barI"></i></div>',
+      '<section><h3>① 顧客ページのURL</h3>',
+      '<input type="text" id="url" placeholder="例: https://example.com/customer/detail?id=　（途中に入る場合は {id} と書く）">',
+      '<div class="hint" id="urlEx"></div>',
+      '<h3 style="margin-top:10px">② 取得する項目（表の列）</h3>',
+      '<div id="cols"></div>',
+      '<div class="row"><button id="pick" class="pri">📍 ページで選ぶ</button><button id="addCol">＋ 手入力で追加</button><span class="hint">📍を押すと見本の顧客ページが開くので、取りたい文字をクリック</span></div>',
+      '<details><summary>詳細設定</summary><div class="row">',
+      '<label>読み込み後の待ち <input type="number" id="oWait" min="0" step="100"> ms</label>',
+      '<label>項目が出るまで最大 <input type="number" id="oItem" min="0" step="500"> ms</label>',
+      '<label>タイムアウト <input type="number" id="oTo" min="1000" step="1000"> ms</label>',
+      '</div><div class="row">',
+      '<label>方式 <select id="oMode"><option value="win">子ページで開く（確実）</option><option value="fetch">裏で読み込む（速い・画面が動的なサイトは不可）</option></select></label>',
+      '<label><input type="checkbox" id="oKeep"> 終わっても子ページを閉じない</label>',
+      '<label><input type="checkbox" id="oDup"> 重複IDを除く</label>',
+      '</div></details></section>',
+      '<section><h3>③ 顧客ID（改行区切りで貼り付け）</h3>',
+      '<textarea id="ids" placeholder="12345678&#10;23456789&#10;…（8桁でまとまった数字以外は自動で消えます）"></textarea>',
+      '<div class="row"><button id="setIds" class="pri">表にセット</button><button id="addIds">表に追加</button><span class="hint" id="idInfo"></span></div></section>',
+      '<section><div class="row" style="margin-top:0"><button id="start" class="pri">▶ 開始</button><button id="redo">全件やり直し</button><button id="stop" disabled>⏸ 停止</button>',
+      '<span style="flex:1"></span><button id="tsv">📋 Excel用コピー</button><button id="csv">CSV保存</button><button id="clr" class="dan">表をクリア</button></div>',
+      '<div class="tw"><table><thead id="th"></thead><tbody id="tb"></tbody></table></div>',
+      '<div class="hint" style="margin-top:6px">▶ 開始：未取得・エラーの行だけを上から順に処理します。各行の ▶ でその行だけ取り直し、🔗 でページを別タブで開きます。</div></section>',
+      '<div id="toast"></div>'
+    ].join('');
+    D.body.appendChild(root);
+
+    function toast(m, err) {
+      var t = $('toast');
+      t.textContent = m; t.className = err ? 'err' : ''; t.style.display = 'block';
+      clearTimeout(t._t); t._t = setTimeout(function () { t.style.display = 'none'; }, err ? 7000 : 3000);
+    }
+
+    /* ---------- URL と顧客ID ---------- */
+    function buildUrl(id) {
+      var u = String(S.url || '').trim();
+      return /\{id\}/i.test(u) ? u.replace(/\{id\}/gi, id) : u + id;
+    }
+    function showUrlEx() { $('urlEx').textContent = S.url ? '例）12345678 → ' + buildUrl('12345678') : 'IDの手前までのURLを入れてください。'; }
+    function parseIds(t) {
+      t = String(t || '').replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+      return t.match(/(?<![0-9])[0-9]{8}(?![0-9])/g) || [];
+    }
+    function setIds(append) {
+      var found = parseIds($('ids').value), dup = 0, have = {}, add = [];
+      if (append) { rows.forEach(function (r) { have[r.id] = 1; }); }
+      found.forEach(function (id) {
+        if (S.dedupe && have[id]) { dup++; return; }
+        have[id] = 1; add.push({ id: id, st: '', vals: {}, err: '' });
+      });
+      if (!found.length) { toast('8桁の顧客IDが見つかりませんでした', 1); return; }
+      if (!append && rows.some(function (r) { return r.st; }) && !confirm('取得済みの結果があります。表を置き換えますか？')) { return; }
+      rows = append ? rows.concat(add) : add;
+      $('ids').value = add.map(function (r) { return r.id; }).join('\n');
+      $('idInfo').textContent = add.length + '件をセット' + (dup ? '（重複 ' + dup + '件を除外）' : '') + ' / 表は全' + rows.length + '件';
+      renderTable();
+    }
+
+    /* ---------- 文字の取り出し ---------- */
+    function clean(s) {
+      return String(s == null ? '' : s).replace(/ /g, ' ').replace(/[ \t　]+/g, ' ')
+        .split('\n').map(function (l) { return l.trim(); }).filter(Boolean).join('\n');
+    }
+    function getText(el) {
+      if (!el) { return ''; }
+      var tg = el.tagName;
+      if (tg === 'INPUT' || tg === 'TEXTAREA') { return clean(el.value); }
+      if (tg === 'SELECT') { var o = el.options[el.selectedIndex]; return o ? clean(o.text) : ''; }
+      var t = clean(el.innerText != null ? el.innerText : el.textContent);
+      if (!t && el.querySelector) {
+        var f = el.querySelector('input:not([type=hidden]),textarea,select');
+        if (f) { return getText(f); }
+      }
+      return t;
+    }
+    function nlab(s) { return String(s || '').replace(/[\s　 ]+/g, '').replace(/[:：]+$/, ''); }
+    function ownText(el) { var s = '', n; for (n = el.firstChild; n; n = n.nextSibling) { if (n.nodeType === 3) { s += n.nodeValue; } } return s; }
+    function skip(el) { return /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|HEAD)$/.test(el.tagName) || (el.closest && el.closest('[data-cidkit]')); }
+    function afterLabel(el) {
+      /* 見出し要素の「後ろ」にある値を探す（同じ親の中の文字 → 次の要素 → 親をさかのぼる） */
+      var body = el.ownerDocument.body;
+      for (var p = el, lv = 0; p && p !== body && lv < 5; p = p.parentElement, lv++) {
+        for (var n = p.nextSibling; n; n = n.nextSibling) {
+          if (n.nodeType === 3) {
+            var t = clean(n.nodeValue).replace(/^[:：\s]+/, '');
+            if (t) { return t; }
+          } else if (n.nodeType === 1 && !skip(n) && !/^(BR|HR|WBR)$/.test(n.tagName)) {
+            /* 隣の要素が空なら「値なし」（その先の別項目は拾わない） */
+            return getText(n).replace(/^[:：\s]+/, '');
+          }
+        }
+      }
+      return '';
+    }
+    function byLabel(doc, label) {
+      var L = nlab(label);
+      if (!L || !doc.body) { return ''; }
+      var all = doc.body.getElementsByTagName('*'), exact = null, starts = null, i;
+      for (i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (skip(el)) { continue; }
+        var o = nlab(ownText(el));
+        if (!o) { continue; }
+        if (o === L) { exact = el; break; }
+        if (!starts && o.indexOf(L) === 0) { starts = el; }
+      }
+      if (exact) { return afterLabel(exact); }
+      if (starts) {
+        var pat = L.split('').map(function (c) { return c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }).join('[\\s\\u3000]*');
+        var rest = clean(ownText(starts)).replace(new RegExp('^[\\s\\u3000]*' + pat), '').replace(/^[:：\s]+/, '');
+        return rest || afterLabel(starts);
+      }
+      return '';
+    }
+    function extract(doc, c) {
+      try {
+        if (!doc || !doc.body) { return ''; }
+        if (c.type === 'all') { var t = getText(doc.body); return t.length > 3000 ? t.slice(0, 3000) + '…' : t; }
+        if (c.type === 'css') {
+          if (!c.v) { return ''; }
+          return [].map.call(doc.querySelectorAll(c.v), getText).filter(Boolean).join(' / ');
+        }
+        if (c.type === 'label') { return byLabel(doc, c.v); }
+        if (c.type === 'regex') {
+          if (!c.v) { return ''; }
+          var m = getText(doc.body).match(new RegExp(c.v));
+          return m ? clean(m[1] != null ? m[1] : m[0]) : '';
+        }
+      } catch (e) { return '（設定エラー: ' + e.message + '）'; }
+      return '';
+    }
+
+    /* ---------- ページの読み込み ---------- */
+    async function until(fn, ms) {
+      var t0 = Date.now();
+      for (;;) {
+        var r = null;
+        try { r = fn(); } catch (e) { r = null; }
+        if (r) { return r; }
+        if (Date.now() - t0 >= ms) { return null; }
+        await sleep(150);
+      }
+    }
+    function openChild() {
+      if (!child || child.closed) { child = window.open('about:blank', 'CIDKIT_CHILD', 'width=1000,height=760,resizable=yes,scrollbars=yes'); }
+      return !!child;
+    }
+    function childDoc() { try { return child && !child.closed ? child.document : null; } catch (e) { return null; } }
+    async function loadWin(url) {
+      if (!child || child.closed) { throw new Error('子ページが閉じられました'); }
+      var old = childDoc();
+      try { child.location.href = url; } catch (e) { child.location = url; }
+      var d = await until(function () {
+        var dd = child.document;
+        if (dd !== old && dd.readyState === 'complete' && child.location.href !== 'about:blank') { return dd; }
+      }, S.timeout);
+      if (!d) {
+        var cross = false;
+        try { void child.document.body; } catch (e) { cross = true; }
+        throw new Error(cross ? '別ドメインのページになったため読めません（ログイン切れ、または顧客ページと違うサイトで実行している可能性）' : '読み込みがタイムアウトしました');
+      }
+      await sleep(+S.wait || 0);
+      return d;
+    }
+    async function loadFetch(url) {
+      var ctl = window.AbortController ? new AbortController() : null;
+      var tm = setTimeout(function () { if (ctl) { ctl.abort(); } }, S.timeout);
+      var r;
+      try { r = await fetch(url, { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined }); }
+      catch (e) { throw new Error('読み込めません（別ドメイン・タイムアウトの可能性）: ' + e.message); }
+      finally { clearTimeout(tm); }
+      if (!r.ok) { throw new Error('HTTP ' + r.status); }
+      var buf = await r.arrayBuffer();
+      var cs = ((r.headers.get('content-type') || '').match(/charset=["']?([\w-]+)/i) || [])[1];
+      if (!cs) { cs = (new TextDecoder('windows-1252').decode(buf.slice(0, 4096)).match(/charset=["']?([\w-]+)/i) || [])[1]; }
+      var html;
+      try { html = new TextDecoder(cs || 'utf-8').decode(buf); } catch (e) { html = new TextDecoder('utf-8').decode(buf); }
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      [].forEach.call(doc.querySelectorAll('script,style,noscript,template'), function (x) { x.parentNode.removeChild(x); });
+      return { doc: doc, url: r.url || url };
+    }
+    async function extractWait(getDoc, ms) {
+      var vals = {};
+      await until(function () {
+        var d = getDoc(), ok = true;
+        vals = {};
+        S.cols.forEach(function (c) { var v = extract(d, c); vals[c.key] = v; if (!v) { ok = false; } });
+        return ok;
+      }, ms);
+      return vals;
+    }
+
+    /* ---------- 実行 ---------- */
+    async function run(which) {
+      if (running) { return; }
+      if (!String(S.url || '').trim()) { toast('① 顧客ページのURLを入力してください', 1); $('url').focus(); return; }
+      var list = [];
+      rows.forEach(function (r, i) {
+        if (typeof which === 'number' ? i === which : (which === 'all' || r.st !== 'ok')) { list.push(i); }
+      });
+      if (!list.length) { toast(rows.length ? 'すべて取得済みです（取り直すときは「全件やり直し」）' : '③ で顧客IDを表にセットしてください', !rows.length); return; }
+      /* 子ページはボタンを押した直後に開く（ポップアップブロック対策。以降は同じ子ページを使い回す） */
+      if (S.mode === 'win' && !openChild()) { toast('子ページを開けませんでした。このサイトのポップアップを許可してください', 1); return; }
+      stopPicking();
+      running = true; stopReq = false; uiState();
+      var done = 0, bad = 0;
+      for (var n = 0; n < list.length; n++) {
+        if (stopReq) { break; }
+        var i = list[n], r = rows[i];
+        r.st = 'run'; r.err = ''; renderTable();
+        progress(n, list.length, r.id);
+        try {
+          var url = buildUrl(r.id), vals, href = '';
+          if (S.mode === 'win') {
+            await loadWin(url);
+            vals = await extractWait(childDoc, +S.itemWait || 0);
+            try { href = child.location.href; } catch (e) { }
+          } else {
+            var f = await loadFetch(url);
+            vals = await extractWait(function () { return f.doc; }, 0);
+            href = f.url;
+          }
+          r.vals = vals;
+          if (href.indexOf(r.id) < 0) { r.st = 'warn'; r.err = '開いたページのURLにIDがありません（ログイン画面などに移動した可能性）: ' + href; bad++; }
+          else if (S.cols.every(function (c) { return !vals[c.key]; })) { r.st = 'warn'; r.err = '文字を取得できませんでした'; bad++; }
+          else { r.st = 'ok'; done++; }
+        } catch (e) {
+          r.st = 'err'; r.err = e.message; bad++;
+          if (S.mode === 'win' && (!child || child.closed)) { renderTable(); toast('子ページが閉じられたため停止しました', 1); break; }
+        }
+        renderTable();
+      }
+      running = false;
+      if (child && !child.closed && !S.keepOpen && !pickStop) { try { child.close(); } catch (e) { } child = null; }
+      try { window.focus(); } catch (e) { }
+      progress(-1);
+      uiState();
+      toast((stopReq ? '停止しました。' : '完了しました。') + '取得 ' + done + '件' + (bad ? ' / 要確認 ' + bad + '件' : ''), !!bad);
+    }
+    function progress(n, total, id) {
+      if (n < 0) {
+        var ok = rows.filter(function (r) { return r.st === 'ok'; }).length;
+        $('prog').textContent = rows.length ? '取得済み ' + ok + ' / ' + rows.length + '件' : '';
+        $('barI').style.width = rows.length ? (ok / rows.length * 100) + '%' : '0';
+        return;
+      }
+      $('prog').textContent = '処理中 ' + (n + 1) + ' / ' + total + '件（' + id + '）';
+      $('barI').style.width = (n / total * 100) + '%';
+    }
+    function uiState() {
+      $('start').disabled = running; $('redo').disabled = running; $('stop').disabled = !running;
+      $('setIds').disabled = running; $('clr').disabled = running; $('pick').disabled = running;
+    }
+
+    /* ---------- 表 ---------- */
+    var ICON = { '': '—', run: '⏳', ok: '✔', warn: '⚠', err: '✖' };
+    function renderTable() {
+      $('th').innerHTML = '<tr><th>#</th><th>顧客ID</th><th></th>' + S.cols.map(function (c) { return '<th>' + esc(c.name) + '</th>'; }).join('') + '<th></th></tr>';
+      if (!rows.length) { $('tb').innerHTML = '<tr><td colspan="' + (S.cols.length + 4) + '" class="empty">③ で顧客IDをセットすると、ここに一覧が出ます。</td></tr>'; progress(-1); return; }
+      $('tb').innerHTML = rows.map(function (r, i) {
+        return '<tr class="' + r.st + '" data-i="' + i + '"><td class="no">' + (i + 1) + '</td><td class="id">' + esc(r.id) + '</td>' +
+          '<td class="st" title="' + esc(r.err) + '">' + ICON[r.st || ''] + '</td>' +
+          S.cols.map(function (c) { return '<td><div class="cell">' + esc(r.vals[c.key] || '') + '</div></td>'; }).join('') +
+          '<td class="ops"><button data-a="one" title="この行だけ取得">▶</button><button data-a="open" title="ページを別タブで開く">🔗</button><button data-a="del" title="行を削除">✕</button></td></tr>';
+      }).join('');
+      var cur = $('tb').querySelector('tr.run');
+      if (cur) { try { cur.scrollIntoView({ block: 'nearest' }); } catch (e) { } }
+      if (!running) { progress(-1); }
+    }
+    $('tb').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) { return; }
+      var i = +b.closest('tr').getAttribute('data-i'), a = b.getAttribute('data-a');
+      if (a === 'one') { run(i); }
+      else if (a === 'open') { window.open(buildUrl(rows[i].id), '_blank'); }
+      else if (a === 'del' && !running) { rows.splice(i, 1); renderTable(); }
+    });
+    function q(v) { v = String(v == null ? '' : v); return /[\t\n",]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+    function table(sep) {
+      var head = ['顧客ID'].concat(S.cols.map(function (c) { return c.name; }), ['状態']);
+      var body = rows.map(function (r) {
+        return [r.id].concat(S.cols.map(function (c) { return r.vals[c.key] || ''; }), [r.st === 'ok' ? '' : (r.err || '未取得')]);
+      });
+      return [head].concat(body).map(function (l) { return l.map(q).join(sep); }).join('\r\n');
+    }
+    $('tsv').onclick = function () {
+      if (!rows.length) { toast('表が空です', 1); return; }
+      var ta = D.createElement('textarea'); ta.value = table('\t'); D.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = D.execCommand('copy'); } catch (e) { }
+      D.body.removeChild(ta);
+      toast(ok ? 'コピーしました。Excel に貼り付けてください' : 'コピーできませんでした', !ok);
+    };
+    $('csv').onclick = function () {
+      if (!rows.length) { toast('表が空です', 1); return; }
+      var d = new Date(), p = function (n) { return ('0' + n).slice(-2); };
+      var a = D.createElement('a');
+      a.href = URL.createObjectURL(new Blob(['﻿' + table(',')], { type: 'text/csv' }));
+      a.download = 'customer_info_' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' + p(d.getHours()) + p(d.getMinutes()) + '.csv';
+      D.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 10000);
+    };
+    $('clr').onclick = function () { if (rows.length && !confirm('表をすべて消しますか？')) { return; } rows = []; $('idInfo').textContent = ''; renderTable(); };
+
+    /* ---------- 取得項目（列） ---------- */
+    function renderCols() {
+      $('cols').innerHTML = S.cols.map(function (c, i) {
+        return '<div class="col" data-i="' + i + '"><input type="text" class="nm" data-f="name" value="' + esc(c.name) + '" placeholder="列の名前">' +
+          '<select data-f="type">' + TYPES.map(function (t) { return '<option value="' + t[0] + '"' + (t[0] === c.type ? ' selected' : '') + '>' + t[1] + '</option>'; }).join('') + '</select>' +
+          (c.type === 'all' ? '<span class="vv hint">ページの文字をすべて取得（最大3000文字）</span>' :
+            '<input type="text" class="vv" data-f="v" value="' + esc(c.v) + '" placeholder="' + ({ label: '画面上の見出し（例: 契約状態）', css: 'CSSセレクタ（例: #status）', regex: '例: 契約状態[:：]\\s*(\\S+)' })[c.type] + '">') +
+          '<button data-a="test" title="開いている子ページで試す">🔍</button><button data-a="up" title="左へ">↑</button><button data-a="del" class="dan" title="削除">✕</button></div>';
+      }).join('');
+      renderTable();
+    }
+    $('cols').addEventListener('change', function (e) {
+      var f = e.target.getAttribute('data-f');
+      if (!f) { return; }
+      var c = S.cols[+e.target.closest('.col').getAttribute('data-i')];
+      c[f] = e.target.value; delete c.def;
+      save();
+      if (f === 'type') { renderCols(); } else { renderTable(); }
+    });
+    $('cols').addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) { return; }
+      var i = +b.closest('.col').getAttribute('data-i'), a = b.getAttribute('data-a');
+      if (a === 'del') { S.cols.splice(i, 1); if (!S.cols.length) { S.cols = [defCol()]; } }
+      else if (a === 'up') { if (i > 0) { S.cols.splice(i - 1, 0, S.cols.splice(i, 1)[0]); } }
+      else if (a === 'test') {
+        var d = childDoc();
+        if (!d || !d.body || d.URL === 'about:blank') { toast('子ページが開いていません（📍 ページで選ぶ で見本を開いてから試してください）', 1); return; }
+        var v = extract(d, S.cols[i]);
+        toast(v ? '取得結果: ' + v.slice(0, 120) : '何も取得できませんでした', !v);
+        return;
+      }
+      save(); renderCols();
+    });
+    $('addCol').onclick = function () {
+      if (S.cols.length === 1 && S.cols[0].def) { S.cols = []; }
+      S.cols.push({ key: uid(), name: '項目' + (S.cols.length + 1), type: 'label', v: '' });
+      save(); renderCols();
+    };
+
+    /* ---------- 📍 ページで選ぶ ---------- */
+    function cssPath(el) {
+      var doc = el.ownerDocument, parts = [];
+      while (el && el.nodeType === 1 && el !== doc.documentElement) {
+        if (el.id && /^[A-Za-z][\w-]*$/.test(el.id) && !/\d{4,}/.test(el.id) && doc.querySelectorAll('#' + el.id).length === 1) { parts.unshift('#' + el.id); break; }
+        if (el === doc.body) { parts.unshift('body'); break; }
+        var tag = el.tagName.toLowerCase(), p = el.parentElement, idx = 1, n = 0, s = el, c;
+        while ((s = s.previousElementSibling)) { if (s.tagName === el.tagName) { idx++; } }
+        for (c = p.firstElementChild; c; c = c.nextElementSibling) { if (c.tagName === el.tagName) { n++; } }
+        parts.unshift(n > 1 ? tag + ':nth-of-type(' + idx + ')' : tag);
+        el = p;
+      }
+      return parts.join(' > ');
+    }
+    function suggest(el) {
+      var doc = el.ownerDocument, want = getText(el), cands = [];
+      var cell = el.closest('td,dd,th,dt,li') || el;
+      var prev = cell.previousElementSibling;
+      if (prev) { cands.push(getText(prev)); }
+      var tr = el.closest('tr');
+      if (tr) { var th = tr.querySelector('th'); if (th && !th.contains(el)) { cands.push(getText(th)); } }
+      var m = want.match(/^(.{1,20}?)[：:]\s*\S/);
+      if (m) { cands.push(m[1]); }
+      for (var i = 0; i < cands.length; i++) {
+        var lb = clean(cands[i]).replace(/[:：\s]+$/, '');
+        if (!lb || lb.length > 30 || lb.indexOf('\n') >= 0) { continue; }
+        var got = byLabel(doc, lb);
+        if (got && (got === want || want.indexOf(got) >= 0 || got.indexOf(want) >= 0)) { return { type: 'label', v: lb, name: lb, sample: got }; }
+      }
+      return { type: 'css', v: cssPath(el), name: '項目' + (S.cols.length + 1), sample: want };
+    }
+    function stopPicking() { if (pickStop) { pickStop(); pickStop = null; } $('pick').textContent = '📍 ページで選ぶ'; }
+    function injectPicker(doc) {
+      var bar = doc.createElement('div'), hl = null, old = '';
+      bar.setAttribute('data-cidkit', '1');
+      bar.style.cssText = 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#1f2937;color:#fff;font:13px/1.4 Meiryo,sans-serif;padding:7px 14px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.4);display:flex;gap:10px;align-items:center';
+      bar.innerHTML = '<span>📍 取りたい文字をクリック（続けて選べます）</span><button type="button" style="font:inherit;border:1px solid #9ca3af;background:none;color:#fff;border-radius:5px;padding:2px 10px;cursor:pointer">終了</button>';
+      (doc.body || doc.documentElement).appendChild(bar);
+      function clear() { if (hl) { hl.style.outline = old; hl = null; } }
+      function over(e) {
+        var t = e.target;
+        if (bar.contains(t) || t === hl) { return; }
+        clear(); hl = t; old = t.style.outline; t.style.outline = '2px solid #f57c00';
+      }
+      function click(e) {
+        var t = e.target;
+        if (bar.contains(t)) { if (t.tagName === 'BUTTON') { stopPicking(); try { window.focus(); } catch (x) { } } return; }
+        e.preventDefault(); e.stopPropagation();
+        clear();
+        var sg = suggest(t);
+        try { window.focus(); } catch (x) { }
+        var nm = prompt('列の名前を入力してください\n取得される文字: ' + (sg.sample || '（空）').slice(0, 80) + '\n方法: ' + (sg.type === 'label' ? '見出し「' + sg.v + '」の値' : 'CSS ' + sg.v), sg.name);
+        if (nm === null) { return; }
+        if (S.cols.length === 1 && S.cols[0].def) { S.cols = []; }
+        S.cols.push({ key: uid(), name: nm.trim() || sg.name, type: sg.type, v: sg.v });
+        save(); renderCols();
+        toast('列「' + (nm.trim() || sg.name) + '」を追加しました。続けて子ページで選べます');
+      }
+      function stopEv(e) { if (!bar.contains(e.target)) { e.preventDefault(); e.stopPropagation(); } }
+      function key(e) { if (e.key === 'Escape') { stopPicking(); } }
+      doc.addEventListener('mouseover', over, true);
+      doc.addEventListener('click', click, true);
+      doc.addEventListener('mousedown', stopEv, true);
+      doc.addEventListener('mouseup', stopEv, true);
+      doc.addEventListener('keydown', key, true);
+      return function () {
+        clear();
+        doc.removeEventListener('mouseover', over, true);
+        doc.removeEventListener('click', click, true);
+        doc.removeEventListener('mousedown', stopEv, true);
+        doc.removeEventListener('mouseup', stopEv, true);
+        doc.removeEventListener('keydown', key, true);
+        if (bar.parentNode) { bar.parentNode.removeChild(bar); }
+      };
+    }
+    $('pick').onclick = async function () {
+      if (pickStop) { stopPicking(); return; }
+      if (!String(S.url || '').trim()) { toast('先に ① 顧客ページのURLを入力してください', 1); $('url').focus(); return; }
+      if (!openChild()) { toast('子ページを開けませんでした。このサイトのポップアップを許可してください', 1); return; }
+      var id = rows.length ? rows[0].id : '';
+      if (!id) {
+        id = (parseIds(prompt('見本にする顧客ID（8桁）を入力してください', '') || '')[0]) || '';
+        if (!id) { toast('8桁の顧客IDを入力してください', 1); return; }
+      }
+      try {
+        toast('見本ページを開いています… ' + id);
+        var d = await loadWin(buildUrl(id));
+        await sleep(300);
+        pickStop = injectPicker(childDoc() || d);
+        $('pick').textContent = '📍 選ぶのを終了';
+        try { child.focus(); } catch (e) { }
+      } catch (e) { toast(e.message, 1); }
+    };
+
+    /* ---------- 設定の入出力 ---------- */
+    $('url').value = S.url || '';
+    $('url').oninput = function () { S.url = this.value.trim(); save(); showUrlEx(); };
+    $('oWait').value = S.wait; $('oItem').value = S.itemWait; $('oTo').value = S.timeout;
+    $('oMode').value = S.mode; $('oKeep').checked = !!S.keepOpen; $('oDup').checked = !!S.dedupe;
+    $('oWait').onchange = function () { S.wait = Math.max(0, +this.value || 0); save(); };
+    $('oItem').onchange = function () { S.itemWait = Math.max(0, +this.value || 0); save(); };
+    $('oTo').onchange = function () { S.timeout = Math.max(1000, +this.value || 20000); save(); };
+    $('oMode').onchange = function () { S.mode = this.value; save(); };
+    $('oKeep').onchange = function () { S.keepOpen = this.checked; save(); };
+    $('oDup').onchange = function () { S.dedupe = this.checked; save(); };
+    $('setIds').onclick = function () { setIds(false); };
+    $('addIds').onclick = function () { setIds(true); };
+    $('start').onclick = function () { run('pending'); };
+    $('redo').onclick = function () { run('all'); };
+    $('stop').onclick = function () { stopReq = true; $('stop').disabled = true; toast('今の行が終わったら止まります'); };
+    window.addEventListener('beforeunload', function (e) {
+      try { if (child && !child.closed) { child.close(); } } catch (x) { }
+      if (rows.some(function (r) { return r.st === 'ok'; })) { e.preventDefault(); e.returnValue = ''; }
+    });
+    showUrlEx(); renderCols(); uiState();
+  }
+
+  /* ================= ブックマークレット本体：パネルを開く ================= */
+  var w = null;
+  try { w = W.open('', 'CIDKIT_PANEL', 'width=820,height=880,resizable=yes,scrollbars=yes'); } catch (e) { }
+  if (!w) { alert('ポップアップがブロックされました。\nアドレスバー右端のアイコンからこのサイトのポップアップを許可して、もう一度クリックしてください。'); return; }
+  var ready = false;
+  try { ready = !!w.__CIDKIT; } catch (e) {
+    alert('別のサイトで開いた「顧客ID一括取得」のパネルが残っています。\nそのパネルを閉じてから、もう一度クリックしてください。');
+    return;
+  }
+  if (!ready) {
+    w.document.open();
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>顧客ID一括取得</title></head><body><script>(' + PANEL.toString() + ')();<' + '/script></body></html>');
+    w.document.close();
+  }
+  W.__cidkitWin = w;
+  try { w.focus(); } catch (e) { }
+}
+
+(function () {
+  /* 改行を除去して1行化 → % と # をエスケープ（ブックマークのURL欄で壊れないように） */
+  var src = CIDKIT.toString().replace(/\r?\n\s*/g, ' ');
+  var code = ('javascript:(' + src + ')();').replace(/%/g, '%25').replace(/#/g, '%23');
+  var a = document.getElementById('bm');
+  a.href = code;
+  document.getElementById('bmCode').value = code;
+  document.getElementById('bmInfo').textContent = '（' + code.length.toLocaleString() + ' 文字）';
+  document.getElementById('copyBm').onclick = function () {
+    var ta = document.getElementById('bmCode');
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { }
+    this.textContent = ok ? 'コピーしました ✔' : '手動でコピーしてください';
+  };
+})();
+</script>
+</body>
+</html>
