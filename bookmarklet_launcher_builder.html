@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookmarklet Launcher Builder</title>
+<style>
+:root{
+  --bg:#f5f6f8;--panel:#fff;--line:#dfe2e8;--text:#1d2129;--sub:#6b7280;
+  --accent:#3d63ff;--accent-weak:#e8edff;--ok:#16a34a;--ng:#dc2626;--code:#f8f9fb;
+}
+@media (prefers-color-scheme: dark){
+  :root{--bg:#121418;--panel:#1b1e24;--line:#2f343e;--text:#e8eaf0;--sub:#9aa0ad;
+    --accent:#6b8cff;--accent-weak:#232a44;--ok:#4ade80;--ng:#f87171;--code:#15171c;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.6 system-ui,-apple-system,"Segoe UI","Hiragino Sans","Meiryo",sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:20px;margin:0 0 4px}
+.lead{color:var(--sub);margin:0 0 20px;font-size:13px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+h2 .num{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;
+  background:var(--accent);color:#fff;font-size:12px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+label{font-size:13px;color:var(--sub)}
+input[type=text],select,textarea{font:inherit;color:var(--text);background:var(--code);
+  border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+input[type=text]:focus,select:focus,textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+textarea{width:100%;min-height:110px;font:12px/1.5 Consolas,"SFMono-Regular",Menlo,monospace;resize:vertical}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--panel);color:var(--text);
+  border-radius:8px;padding:6px 12px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger:hover{border-color:var(--ng);color:var(--ng)}
+button.icon{padding:4px 9px}
+.tools{display:grid;gap:12px}
+.tool{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--panel)}
+.tool-head{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.tool-head .name{flex:1;min-width:160px}
+.tool-head input[type=color]{width:34px;height:32px;border:1px solid var(--line);border-radius:8px;padding:2px;background:var(--code)}
+.idx{font-size:12px;color:var(--sub);width:22px;text-align:center}
+.status{font-size:12px;margin-top:6px;color:var(--sub)}
+.status.ok{color:var(--ok)}.status.ng{color:var(--ng)}
+.empty{color:var(--sub);text-align:center;padding:20px;border:1px dashed var(--line);border-radius:10px}
+.out{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+a.drag{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;
+  background:var(--accent-weak);border:2px dashed var(--accent);color:var(--accent);
+  font-weight:600;text-decoration:none;cursor:grab}
+.meta{font-size:12px;color:var(--sub)}
+.howto{font-size:13px;color:var(--sub);margin:12px 0 0;padding-left:20px}
+.howto li{margin:2px 0}
+.warn{font-size:12px;color:var(--ng);margin-top:8px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1d2129;color:#fff;
+  padding:8px 16px;border-radius:8px;font-size:13px;opacity:0;transition:.2s;pointer-events:none}
+.toast.show{opacity:1}
+details summary{cursor:pointer;color:var(--sub);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Bookmarklet Launcher Builder</h1>
+  <p class="lead">複数のブックマークレットを1つにまとめ、クリックでボタン一覧パネルを出すランチャーを作ります。外部通信なし・このファイル単体で動作します。</p>
+
+  <section>
+    <h2><span class="num">1</span>ランチャー設定</h2>
+    <div class="row">
+      <label>パネルのタイトル <input type="text" id="cfgTitle" style="width:180px"></label>
+      <label>表示位置
+        <select id="cfgPos">
+          <option value="tr">右上</option><option value="tl">左上</option>
+          <option value="br">右下</option><option value="bl">左下</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="cfgClose"> 実行したらパネルを閉じる</label>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">2</span>ツールを登録</h2>
+    <p class="meta" style="margin:0 0 12px">レコーダーで作った <code>javascript:</code> から始まるURLをそのまま貼り付けてOK(JSコードのみでも可)。</p>
+    <div class="tools" id="tools"></div>
+    <div class="row" style="margin-top:12px">
+      <button class="primary" id="addBtn">＋ ツールを追加</button>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="num">3</span>ランチャーを設置</h2>
+    <div class="out">
+      <a class="drag" id="dragLink" href="#">🧰 <span id="dragName">ツール</span></a>
+      <button id="copyBtn">URLをコピー</button>
+      <span class="meta" id="sizeInfo"></span>
+    </div>
+    <div class="warn" id="buildWarn"></div>
+    <ol class="howto">
+      <li>上の破線ボタンをブックマークバーへドラッグ(バーは Ctrl+Shift+B で表示)</li>
+      <li>またはブックマークを新規作成し、URL欄に「URLをコピー」した内容を貼り付け</li>
+      <li>使いたいページでクリック → パネルのボタンで各ツールを実行(もう一度クリック or Esc で閉じる)</li>
+      <li>ツールを追加・修正したら、ブックマークを作り直して古いものは削除</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2><span class="num">4</span>バックアップ・復元</h2>
+    <div class="row">
+      <button id="exportBtn">JSONで書き出し</button>
+      <button id="importBtn">JSONを読み込み</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+    <details style="margin-top:12px">
+      <summary>作成済みランチャーのURLから復元する</summary>
+      <p class="meta">ブックマークの「編集」からURLをコピーして貼り付けると、中のツール一覧を取り出せます。</p>
+      <textarea id="restoreSrc" placeholder="javascript:..."></textarea>
+      <div class="row" style="margin-top:8px"><button id="restoreBtn">復元(現在の一覧を置き換え)</button></div>
+    </details>
+    <p class="meta" style="margin:12px 0 0">編集内容はこのブラウザに自動保存されます(同じファイルを開いた場合のみ)。念のためJSON書き出しも推奨。</p>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+var LS_KEY = 'bmLauncherBuilder.v1';
+var COLORS = ['#3d63ff','#16a34a','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#64748b'];
+
+var state = {
+  title: 'ツール', pos: 'tr', closeOnRun: true,
+  tools: [
+    {name:'タイトルとURLを表示', color:'#3d63ff',
+     code:"prompt('タイトルとURL(Ctrl+Cでコピー)', document.title + ' ' + location.href);"},
+    {name:'ページ編集モード切替', color:'#f59e0b',
+     code:"document.designMode = document.designMode === 'on' ? 'off' : 'on';\nalert('編集モード: ' + document.designMode);"}
+  ]
+};
+
+/* ---------- 保存 ---------- */
+function load(){
+  try{ var s = localStorage.getItem(LS_KEY); if(s){ var d = JSON.parse(s); if(d && Array.isArray(d.tools)) state = Object.assign(state, d); } }catch(e){}
+}
+var saveTimer = null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(state)); }catch(e){} }, 300);
+}
+
+/* ---------- 入力の正規化 ---------- */
+function normalize(src){
+  var s = String(src || '').trim();
+  if(/^javascript:/i.test(s)){
+    s = s.replace(/^javascript:/i, '');
+    try{ s = decodeURIComponent(s); }catch(e){ /* 未エンコードならそのまま */ }
+  }
+  return s.trim();
+}
+function check(code){
+  if(!code.trim()) return {ok:false, msg:'コードが空です(ランチャーには含まれません)'};
+  try{ new Function(code); return {ok:true, msg:'OK'}; }
+  catch(e){ return {ok:false, msg:'構文エラー: ' + e.message}; }
+}
+
+/* ---------- ランチャー本体(生成されるブックマークレット内で動く部分) ---------- */
+function launcherRuntime(ID, T, CFG){
+  var P = {tr:'top:16px;right:16px;', tl:'top:16px;left:16px;', br:'bottom:16px;right:16px;', bl:'bottom:16px;left:16px;'};
+  var CSS = ':host{all:initial}'
+   + '.p{font:13px/1.4 system-ui,-apple-system,"Segoe UI","Hiragino Sans","Meiryo",sans-serif;color:#e8eaf0;background:rgba(24,26,32,.97);border:1px solid #3a3f4b;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.35);width:240px;max-height:70vh;display:flex;flex-direction:column;overflow:hidden}'
+   + '.h{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;cursor:move;background:#20232b;border-bottom:1px solid #3a3f4b;user-select:none}'
+   + '.t{font-weight:600;font-size:12px;letter-spacing:.04em}'
+   + '.x{all:unset;cursor:pointer;width:22px;height:22px;text-align:center;border-radius:6px;font-size:16px;line-height:22px;color:#9aa0ad}'
+   + '.x:hover{background:#3a3f4b;color:#fff}'
+   + '.q{all:unset;box-sizing:border-box;margin:8px 8px 0;padding:6px 8px;border:1px solid #3a3f4b;border-radius:6px;background:#15171c;font-size:12px;color:#e8eaf0}'
+   + '.g{padding:8px;display:grid;gap:6px;overflow:auto}'
+   + '.b{all:unset;box-sizing:border-box;cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#2a2e38;font-size:13px;color:#e8eaf0}'
+   + '.b:hover{background:#353a46}.b:focus-visible{outline:2px solid #6b8cff}'
+   + '.d{width:8px;height:8px;border-radius:50%;flex:none}'
+   + '.n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}'
+   + '.e{color:#9aa0ad;font-size:12px;padding:6px}';
+  function el(tag, cls, txt){ var e = document.createElement(tag); if(cls) e.className = cls; if(txt != null) e.textContent = txt; return e; }
+
+  var host = el('div'); host.id = ID;
+  host.style.cssText = 'all:initial;position:fixed;z-index:2147483647;' + (P[CFG.p] || P.tr);
+  var root = host.attachShadow ? host.attachShadow({mode:'open'}) : host;
+  var st = el('style'); st.textContent = CSS;
+  var p = el('div','p'), h = el('div','h'), x = el('button','x','×');
+  x.title = '閉じる (Esc)';
+  h.appendChild(el('span','t', CFG.t || 'ツール')); h.appendChild(x); p.appendChild(h);
+  var q = null;
+  if(T.length > 6){ q = el('input','q'); q.placeholder = '検索…(Enterで先頭を実行)'; p.appendChild(q); }
+  var g = el('div','g'); p.appendChild(g);
+  var btns = [];
+  T.forEach(function(t){
+    var b = el('button','b'), d = el('span','d');
+    d.style.background = t.c; b.appendChild(d); b.appendChild(el('span','n', t.n)); b.title = t.n;
+    b.onclick = function(){ run(t); };
+    g.appendChild(b); btns.push({b:b, t:t});
+  });
+  if(!T.length) g.appendChild(el('div','e','ツールが登録されていません'));
+  root.appendChild(st); root.appendChild(p);
+
+  function close(){ if(host.parentNode) host.parentNode.removeChild(host); document.removeEventListener('keydown', onKey, true); }
+  function run(t){
+    if(CFG.x) close();
+    try{ t.f.call(window); }
+    catch(err){ alert('「' + t.n + '」の実行中にエラー:\n' + ((err && err.message) || err)); }
+  }
+  function onKey(e){ if(e.key === 'Escape'){ e.stopPropagation(); close(); } }
+  document.addEventListener('keydown', onKey, true);
+  x.onclick = close;
+  if(q){
+    q.oninput = function(){
+      var v = q.value.toLowerCase();
+      btns.forEach(function(o){ o.b.style.display = o.t.n.toLowerCase().indexOf(v) > -1 ? '' : 'none'; });
+    };
+    q.onkeydown = function(e){
+      if(e.key === 'Enter'){ var f = btns.filter(function(o){ return o.b.style.display !== 'none'; })[0]; if(f) run(f.t); }
+      e.stopPropagation();
+    };
+  }
+  h.onmousedown = function(e){
+    if(e.target === x) return;
+    var r = host.getBoundingClientRect(), ox = e.clientX - r.left, oy = e.clientY - r.top;
+    function mv(ev){
+      host.style.left = Math.max(0, ev.clientX - ox) + 'px'; host.style.top = Math.max(0, ev.clientY - oy) + 'px';
+      host.style.right = 'auto'; host.style.bottom = 'auto';
+    }
+    function up(){ document.removeEventListener('mousemove', mv, true); document.removeEventListener('mouseup', up, true); }
+    document.addEventListener('mousemove', mv, true); document.addEventListener('mouseup', up, true);
+    e.preventDefault();
+  };
+  (document.body || document.documentElement).appendChild(host);
+  if(q) setTimeout(function(){ q.focus(); }, 0);
+}
+
+/* ---------- 生成 ---------- */
+var MARK_S = '/*<<BMT*/', MARK_E = '/*BMT>>*/';
+function buildCode(){
+  var items = state.tools
+    .filter(function(t){ return t.code.trim() && check(t.code).ok; })
+    .map(function(t){
+      return '{n:' + JSON.stringify(t.name || '無題') + ',c:' + JSON.stringify(t.color || COLORS[0])
+        + ',f:function(){' + MARK_S + '\n' + t.code + '\n' + MARK_E + '}}';
+    }).join(',\n');
+  var cfg = {t: state.title || 'ツール', p: state.pos, x: !!state.closeOnRun};
+  return '(function(){var ID="__bmLauncher__";var o=document.getElementById(ID);'
+    + 'if(o){o.parentNode.removeChild(o);return;}var T=[\n' + items + '\n];('
+    + launcherRuntime.toString() + ')(ID,T,' + JSON.stringify(cfg) + ');})();';
+}
+function buildUrl(){ return 'javascript:' + encodeURIComponent(buildCode()); }
+
+/* ---------- 復元 ---------- */
+function restoreFromUrl(src){
+  var s = normalize(src);
+  var re = /\{n:("(?:[^"\\]|\\.)*"),c:("(?:[^"\\]|\\.)*"),f:function\(\)\{\/\*<<BMT\*\/\n([\s\S]*?)\n\/\*BMT>>\*\/\}\}/g;
+  var m, tools = [];
+  while((m = re.exec(s))){ tools.push({name: JSON.parse(m[1]), color: JSON.parse(m[2]), code: m[3]}); }
+  if(!tools.length) throw new Error('このビルダーで作ったランチャーではないようです');
+  var c = s.match(/\)\(ID,T,(\{[^{}]*\})\);\}\)\(\);?\s*$/), cfg = {};
+  if(c){ try{ cfg = JSON.parse(c[1]); }catch(e){} }
+  return {title: cfg.t || state.title, pos: cfg.p || state.pos, closeOnRun: cfg.x !== undefined ? cfg.x : state.closeOnRun, tools: tools};
+}
+
+/* ---------- UI ---------- */
+var $ = function(id){ return document.getElementById(id); };
+function toast(msg){ var t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(function(){ t.classList.remove('show'); }, 1800); }
+
+function renderTools(){
+  var box = $('tools'); box.innerHTML = '';
+  if(!state.tools.length){ box.innerHTML = '<div class="empty">ツールがありません。「＋ ツールを追加」から登録してください。</div>'; }
+  state.tools.forEach(function(t, i){
+    var card = document.createElement('div'); card.className = 'tool';
+    card.innerHTML =
+      '<div class="tool-head">'
+      + '<span class="idx">' + (i + 1) + '</span>'
+      + '<input type="color" class="color" title="ボタンの色">'
+      + '<input type="text" class="name" placeholder="ボタン名">'
+      + '<button class="icon up" title="上へ">↑</button>'
+      + '<button class="icon down" title="下へ">↓</button>'
+      + '<button class="icon danger del" title="削除">削除</button>'
+      + '</div>'
+      + '<textarea class="code" spellcheck="false" placeholder="javascript:(function(){...})(); をここに貼り付け"></textarea>'
+      + '<div class="status"></div>';
+    var nameEl = card.querySelector('.name'), colorEl = card.querySelector('.color'),
+        codeEl = card.querySelector('.code'), stEl = card.querySelector('.status');
+    nameEl.value = t.name; colorEl.value = t.color; codeEl.value = t.code;
+    function updStatus(){
+      var r = check(t.code);
+      stEl.className = 'status ' + (t.code.trim() ? (r.ok ? 'ok' : 'ng') : '');
+      stEl.textContent = (r.ok ? '✓ ' : '') + r.msg + (t.code.trim() ? '(' + t.code.length.toLocaleString() + '文字)' : '');
+    }
+    nameEl.oninput = function(){ t.name = nameEl.value; changed(); };
+    colorEl.oninput = function(){ t.color = colorEl.value; changed(); };
+    codeEl.oninput = function(){ t.code = codeEl.value; updStatus(); changed(); };
+    codeEl.onblur = function(){
+      var n = normalize(codeEl.value);
+      if(n !== codeEl.value){ codeEl.value = n; t.code = n; updStatus(); changed(); }
+    };
+    codeEl.onpaste = function(){ setTimeout(codeEl.onblur, 0); };
+    card.querySelector('.up').onclick = function(){ move(i, -1); };
+    card.querySelector('.down').onclick = function(){ move(i, 1); };
+    card.querySelector('.del').onclick = function(){
+      if(confirm('「' + (t.name || '無題') + '」を削除しますか?')){ state.tools.splice(i, 1); renderTools(); changed(); }
+    };
+    updStatus();
+    box.appendChild(card);
+  });
+}
+function move(i, d){
+  var j = i + d; if(j < 0 || j >= state.tools.length) return;
+  var tmp = state.tools[i]; state.tools[i] = state.tools[j]; state.tools[j] = tmp;
+  renderTools(); changed();
+}
+var outTimer = null;
+function changed(){ save(); clearTimeout(outTimer); outTimer = setTimeout(renderOutput, 150); }
+function renderOutput(){
+  var url = buildUrl();
+  $('dragLink').href = url;
+  $('dragName').textContent = state.title || 'ツール';
+  var valid = state.tools.filter(function(t){ return t.code.trim() && check(t.code).ok; }).length;
+  var skipped = state.tools.length - valid;
+  $('sizeInfo').textContent = valid + '個のツールを収録 / URL長 ' + url.length.toLocaleString() + '文字';
+  var w = [];
+  if(skipped) w.push('空またはエラーのツール ' + skipped + '個はランチャーに含まれていません。');
+  if(url.length > 60000) w.push('URLがかなり長いです。ブラウザによっては保存できない場合があります。');
+  $('buildWarn').textContent = w.join(' ');
+}
+function renderConfig(){
+  $('cfgTitle').value = state.title; $('cfgPos').value = state.pos; $('cfgClose').checked = !!state.closeOnRun;
+}
+function applyData(d){
+  state.title = d.title || 'ツール'; state.pos = d.pos || 'tr';
+  state.closeOnRun = d.closeOnRun !== undefined ? !!d.closeOnRun : true;
+  state.tools = (d.tools || []).map(function(t){ return {name: String(t.name || ''), color: t.color || COLORS[0], code: normalize(t.code)}; });
+  renderConfig(); renderTools(); changed();
+}
+
+/* ---------- イベント ---------- */
+$('cfgTitle').oninput = function(){ state.title = this.value; changed(); };
+$('cfgPos').onchange = function(){ state.pos = this.value; changed(); };
+$('cfgClose').onchange = function(){ state.closeOnRun = this.checked; changed(); };
+$('addBtn').onclick = function(){
+  state.tools.push({name:'', color: COLORS[state.tools.length % COLORS.length], code:''});
+  renderTools(); changed();
+  var names = document.querySelectorAll('.tool .name'); if(names.length) names[names.length - 1].focus();
+};
+$('dragLink').onclick = function(e){ e.preventDefault(); toast('ブックマークバーへドラッグしてください'); };
+$('copyBtn').onclick = function(){
+  var url = buildUrl();
+  function fallback(){
+    var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); toast('コピーしました'); }catch(e){ toast('コピーに失敗しました'); }
+    document.body.removeChild(ta);
+  }
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(function(){ toast('コピーしました'); }, fallback);
+  } else fallback();
+};
+$('exportBtn').onclick = function(){
+  var blob = new Blob([JSON.stringify(state, null, 2)], {type:'application/json'});
+  var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  var d = new Date(), pad = function(n){ return ('0' + n).slice(-2); };
+  a.download = 'bookmarklet_launcher_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 1000);
+};
+$('importBtn').onclick = function(){ $('importFile').click(); };
+$('importFile').onchange = function(){
+  var f = this.files[0]; if(!f) return;
+  var r = new FileReader();
+  r.onload = function(){
+    try{ var d = JSON.parse(r.result); if(!Array.isArray(d.tools)) throw new Error('形式が違います');
+      applyData(d); toast('読み込みました(' + d.tools.length + '個)'); }
+    catch(e){ alert('読み込みに失敗しました: ' + e.message); }
+  };
+  r.readAsText(f, 'utf-8'); this.value = '';
+};
+$('restoreBtn').onclick = function(){
+  try{ var d = restoreFromUrl($('restoreSrc').value);
+    if(!confirm(d.tools.length + '個のツールが見つかりました。現在の一覧を置き換えますか?')) return;
+    applyData(d); $('restoreSrc').value = ''; toast('復元しました'); }
+  catch(e){ alert('復元できませんでした: ' + e.message); }
+};
+
+load(); renderConfig(); renderTools(); renderOutput();
+})();
+</script>
+</body>
+</html>
