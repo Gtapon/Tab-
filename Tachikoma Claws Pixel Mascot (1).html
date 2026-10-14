@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>タチコマ風ピクセルアート アニメーションギャラリー</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- gifshot: クライアントサイドでCanvasからGIFを生成する軽量ライブラリ -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.5/gifshot.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DotGothic16&family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;600;700&display=swap');
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #0d1117;
+      color: #c9d1d9;
+    }
+
+    .pixel-font {
+      font-family: 'DotGothic16', monospace;
+    }
+
+    .mono-font {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* ピクセルアートをぼかさずくっきり拡大表示 */
+    canvas.pixelated {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* チェッカーフラッグ（透過背景用） */
+    .bg-checker {
+      background-image: linear-gradient(45deg, #1f2937 25%, transparent 25%), 
+                        linear-gradient(-45deg, #1f2937 25%, transparent 25%), 
+                        linear-gradient(45deg, transparent 75%, #1f2937 75%), 
+                        linear-gradient(-45deg, transparent 75%, #1f2937 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+      background-color: #111827;
+    }
+
+    .custom-scroll::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+      background: #374151;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-blue-600 selection:text-white pb-16">
+
+  <header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+          <i data-lucide="bot" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+            <span>タチコマ風 Clawd アニメーション</span>
+            <span class="text-xs bg-blue-900/60 text-blue-400 border border-blue-700/50 px-2 py-0.5 rounded-full mono-font font-normal">No.5 Selected</span>
+          </h1>
+          <p class="text-xs text-gray-400 hidden sm:block">全9ポーズの個別GIF・PNG書き出し対応スタジオ</p>
+        </div>
+      </div>
+
+      <div class="flex items-center space-x-2 sm:space-x-4">
+        <!-- 背景切り替え -->
+        <div class="flex items-center bg-gray-800 rounded-lg p-1 border border-gray-700 text-xs">
+          <button id="bgDarkBtn" class="px-2.5 py-1 rounded bg-blue-600 text-white font-medium transition" title="ダーク背景">Dark</button>
+          <button id="bgTransBtn" class="px-2.5 py-1 rounded text-gray-300 hover:text-white transition" title="透過チェッカー">透過</button>
+          <button id="bgLightBtn" class="px-2.5 py-1 rounded text-gray-300 hover:text-white transition" title="ライト背景">Light</button>
+        </div>
+
+        <!-- 一括GIF書き出しボタン -->
+        <button id="downloadAllGifBtn" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-md transition">
+          <i data-lucide="download-cloud" class="w-4 h-4"></i>
+          <span class="hidden md:inline">全ポーズを順番にGIF保存</span>
+          <span class="md:hidden">一括GIF</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 flex-1 w-full">
+    <div class="mb-8 p-4 rounded-xl bg-gray-900/60 border border-gray-800 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-bold text-white flex items-center gap-2 pixel-font">
+          <i data-lucide="sparkles" class="w-4 h-4 text-yellow-400"></i>
+          キャラクターシート（ポーズ 1 〜 9）
+        </h2>
+        <p class="text-sm text-gray-400 mt-1">
+          各カードの <strong class="text-blue-400">「GIF保存」</strong> ボタンを押すと、そのポーズ単体のループGIFファイルを生成してダウンロードできます。<br class="hidden sm:inline">
+          スピード変更や一時停止、拡大プレビューも可能です。
+        </p>
+      </div>
+      
+      <!-- 速度コントロール -->
+      <div class="flex items-center gap-3 bg-gray-800/80 px-4 py-2.5 rounded-lg border border-gray-700/60">
+        <span class="text-xs text-gray-300 font-medium whitespace-nowrap flex items-center gap-1">
+          <i data-lucide="gauge" class="w-3.5 h-3.5"></i>速度:
+        </span>
+        <button class="speed-btn px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300 hover:bg-gray-600" data-speed="0.6">0.6x</button>
+        <button class="speed-btn px-2 py-0.5 text-xs rounded bg-blue-600 text-white font-bold" data-speed="1.0">1.0x</button>
+        <button class="speed-btn px-2 py-0.5 text-xs rounded bg-gray-700 text-gray-300 hover:bg-gray-600" data-speed="1.5">1.5x</button>
+      </div>
+    </div>
+
+    <div id="cardsGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      <!-- JavaScriptで9つのカードを自動構築 -->
+    </div>
+  </main>
+
+  <div id="modalOverlay" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-gray-900 border border-gray-700 rounded-2xl max-w-lg w-full p-6 relative shadow-2xl">
+      <button id="closeModalBtn" class="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-lg hover:bg-gray-800 transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+      
+      <div class="flex items-center gap-3 mb-4">
+        <span id="modalNumberBadge" class="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-600 text-white mono-font">No.1</span>
+        <h3 id="modalTitle" class="text-xl font-bold text-white pixel-font">ポーズ名</h3>
+      </div>
+
+      <div class="flex justify-center p-6 rounded-xl bg-gray-950 border border-gray-800 mb-6 preview-container">
+        <canvas id="modalCanvas" width="256" height="256" class="pixelated w-48 h-48 rounded-lg shadow-inner"></canvas>
+      </div>
+
+      <p id="modalDesc" class="text-sm text-gray-300 mb-6 leading-relaxed"></p>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button id="modalDownloadGifBtn" class="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm shadow-lg transition">
+          <i data-lucide="file-video" class="w-4 h-4"></i>
+          <span>GIFを書き出す</span>
+        </button>
+        <button id="modalDownloadPngBtn" class="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 font-semibold text-sm transition">
+          <i data-lucide="image" class="w-4 h-4"></i>
+          <span>現在フレームPNG</span>
+        </button>
+      </div>
+
+      <!-- Web埋め込みスニペット例 -->
+      <div class="mt-4 pt-4 border-t border-gray-800">
+        <div class="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+          <span>Web用 HTML タグの例</span>
+          <button id="copyTagBtn" class="text-blue-400 hover:underline flex items-center gap-1">
+            <i data-lucide="copy" class="w-3 h-3"></i> コピー
+          </button>
+        </div>
+        <div id="htmlSnippet" class="bg-gray-950 p-2.5 rounded-lg text-xs mono-font text-blue-300 overflow-x-auto custom-scroll border border-gray-800 select-all">
+          &lt;img src="tachikoma_01_idle.gif" alt="Tachikoma Robot" width="64" height="64" /&gt;
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="fixed bottom-6 right-6 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div class="flex items-center gap-2.5 bg-gray-800 text-white border border-gray-700 px-4 py-3 rounded-xl shadow-2xl text-sm">
+      <i id="toastIcon" data-lucide="check-circle" class="w-4 h-4 text-green-400"></i>
+      <span id="toastMsg">通知メッセージ</span>
+    </div>
+  </div>
+
+  <script>
+    const POSES = [
+      {
+        id: 1,
+        slug: "idle",
+        name: "通常・待機",
+        sub: "基本のアイドリング姿勢",
+        desc: "どっしり構えて脚を微調整しながら、ゆっくりと呼吸するように上下するアイドリング状態です。",
+        duration: 1200,
+        frames: 8
+      },
+      {
+        id: 2,
+        slug: "wave",
+        name: "挨拶・手を振る",
+        sub: "マニピュレーターで手を振る",
+        desc: "右手を上げてピコピコと元気に振って挨拶！サイトのウェルカムやヘッダーに最適です。",
+        duration: 1000,
+        frames: 8
+      },
+      {
+        id: 3,
+        slug: "run",
+        name: "走る・移動中",
+        sub: "脚を忙しく動かして疾走",
+        desc: "前傾姿勢になり、多脚ローラーでダッシュ！後ろに砂煙のドットが飛び散ります。",
+        duration: 800,
+        frames: 8
+      },
+      {
+        id: 4,
+        slug: "thinking",
+        name: "考える・検索中",
+        sub: "首をかしげて「？」を浮かべる",
+        desc: "手をもじもじさせて、頭上に「？」がぷかぷか。読み込み中や検索中のローディングにぴったり。",
+        duration: 1400,
+        frames: 10
+      },
+      {
+        id: 5,
+        slug: "celebrate",
+        name: "喜び・ジャンプ",
+        sub: "飛び跳ねてキラキラ＆音符",
+        desc: "両手を万歳してぴょんぴょんジャンプ！周りにキラキラ星や音符が弾けます。成功通知向け。",
+        duration: 900,
+        frames: 8
+      },
+      {
+        id: 6,
+        slug: "panic",
+        name: "焦る・エラー・困る",
+        sub: "汗をかいてガタガタ震える",
+        desc: "体が小刻みに震え、水色の冷や汗がポタポタ。「！」アイコンと連動し404やエラー画面に最適。",
+        duration: 700,
+        frames: 8
+      },
+      {
+        id: 7,
+        slug: "alert",
+        name: "驚く・発見・警戒",
+        sub: "ハッと気づいてのけぞる",
+        desc: "ピクッと後ろにのけぞり、黄色い「！」がピカッと点滅。新着通知や警告アイコンに活躍。",
+        duration: 1000,
+        frames: 8
+      },
+      {
+        id: 8,
+        slug: "coding",
+        name: "作業中・PCカタカタ",
+        sub: "キーボードを超速タイピング",
+        desc: "モニターに向かって両手を高速タイピング。画面から緑のコードがチカチカ流れます。",
+        duration: 800,
+        frames: 8
+      },
+      {
+        id: 9,
+        slug: "sleep",
+        name: "休む・スリープ",
+        sub: "体を丸めて「zZ」おやすみ",
+        desc: "脚をたたみ、センサーを減光して低消費電力モードへ。頭上から「z Z」の文字が昇ります。",
+        duration: 1600,
+        frames: 10
+      }
+    ];
+
+    const PALETTE = {
+      // メインボディ（ブルー）
+      bodyMain: '#2b7ec1',
+      bodyLight: '#4ca2e3',
+      bodyDark: '#1a568b',
+      bodyOutline: '#0f3960',
+      
+      // ポッド（背中のタンク）
+      podMain: '#22639a',
+      podLight: '#327ebf',
+      podDark: '#144168',
+      
+      // レンズ/カメラ（中央）
+      lensOuter: '#12395b',
+      lensRing: '#5b83a6',
+      lensGlass: '#dcf0fa',
+      lensPupil: '#1d5a8c',
+      lensHighlight: '#ffffff',
+      
+      // マニピュレーター（手・クロー）
+      armBase: '#1d5988',
+      handMain: '#799bb3',
+      handLight: '#d2e4f0',
+      handClaw: '#ffffff',
+      
+      // 多脚
+      legMain: '#226ca7',
+      legDark: '#13446b',
+      legFoot: '#113a5c',
+      
+      // エフェクト用
+      white: '#ffffff',
+      yellow: '#ffd23f',
+      yellowDark: '#e5b216',
+      sweat: '#55d0ff',
+      musicPink: '#ff6b9d',
+      sparkleGreen: '#4ade80',
+      dust: '#8fa5b8',
+      monitorScreen: '#0c2233',
+      monitorCode: '#4ade80',
+      monitorCase: '#4b5563',
+      keyboard: '#6b7280',
+      sleepZ: '#93c5fd'
+    };
+
+    let currentSpeed = 1.0;
+    let currentBgMode = 'dark'; // 'dark', 'checker', 'light'
+    let isModalOpen = false;
+    let activeModalPose = null;
+    let instances = []; // 各カードのCanvas参照
+
+    // ドットを精密に描画
+    function p(ctx, x, y, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
+    }
+
+    function rect(ctx, x, y, w, h, color) {
+      ctx.fillStyle = color;
+      ctx.fillRect(Math.floor(x), Math.floor(y), Math.floor(w), Math.floor(h));
+    }
+
+    // 基本解像度: 32 x 32
+    function drawPose(ctx, poseId, progress) {
+      // 背景クリア
+      ctx.clearRect(0, 0, 32, 32);
+
+      const t = progress; // 0.0 ~ 1.0
+      const phase = t * Math.PI * 2;
+
+      // 各ポーズに応じた描画ディスパッチ
+      switch (poseId) {
+        case 1: drawIdle(ctx, phase, t); break;
+        case 2: drawWave(ctx, phase, t); break;
+        case 3: drawRun(ctx, phase, t); break;
+        case 4: drawThinking(ctx, phase, t); break;
+        case 5: drawCelebrate(ctx, phase, t); break;
+        case 6: drawPanic(ctx, phase, t); break;
+        case 7: drawAlert(ctx, phase, t); break;
+        case 8: drawCoding(ctx, phase, t); break;
+        case 9: drawSleep(ctx, phase, t); break;
+      }
+    }
+
+    /* ==============================================================
+       共通パーツ描画関数 (32x32空間)
+       ============================================================== */
+
+    // 背後ポッド（背中の丸っこいユニット）
+    function drawBackPod(ctx, bx, by) {
+      rect(ctx, bx, by + 1, 9, 8, PALETTE.podDark);
+      rect(ctx, bx + 1, by, 7, 9, PALETTE.podMain);
+      rect(ctx, bx + 2, by + 1, 5, 2, PALETTE.podLight); // ハイライト
+      // 小さな四角スリット
+      rect(ctx, bx + 5, by + 3, 2, 2, PALETTE.lensOuter);
+    }
+
+    // メイン直方体ボディ
+    function drawMainBody(ctx, bx, by) {
+      // 影・下部
+      rect(ctx, bx, by + 8, 11, 2, PALETTE.bodyDark);
+      // メイン面
+      rect(ctx, bx, by, 11, 8, PALETTE.bodyMain);
+      // 上部ハイライト
+      rect(ctx, bx + 1, by, 9, 2, PALETTE.bodyLight);
+      // 側面ライン
+      rect(ctx, bx, by + 1, 1, 8, PALETTE.bodyDark);
+      rect(ctx, bx + 10, by + 1, 1, 8, PALETTE.bodyDark);
+      // 側面の四角いインジケーターパーツ
+      rect(ctx, bx + 2, by + 4, 2, 2, PALETTE.lensRing);
+      p(ctx, bx + 2, by + 4, PALETTE.white);
+    }
+
+    // 前面メインアイ（大きな丸いカメラ）
+    function drawMainEye(ctx, ex, ey, isSurprised = false, isSleep = false) {
+      if (isSleep) {
+        // スリープ時のスリット
+        rect(ctx, ex, ey + 2, 6, 2, PALETTE.lensOuter);
+        rect(ctx, ex + 1, ey + 2, 4, 1, PALETTE.podLight);
+        return;
+      }
+
+      // 外枠
+      rect(ctx, ex, ey, 6, 6, PALETTE.lensOuter);
+      rect(ctx, ex + 1, ey - 1, 4, 8, PALETTE.lensOuter);
+      rect(ctx, ex - 1, ey + 1, 8, 4, PALETTE.lensOuter);
+      
+      // リング
+      rect(ctx, ex, ey, 6, 6, PALETTE.lensRing);
+      
+      // ガラス
+      rect(ctx, ex + 1, ey + 1, 4, 4, PALETTE.lensGlass);
+      
+      if (isSurprised) {
+        // 驚いた時の縮瞳
+        p(ctx, ex + 2, ey + 2, PALETTE.lensPupil);
+      } else {
+        // 通常の瞳とハイライト
+        rect(ctx, ex + 2, ey + 2, 2, 2, PALETTE.lensPupil);
+        p(ctx, ex + 1, ey + 1, PALETTE.white); // キラーンハイライト
+      }
+    }
+
+    // 脚（タチコマ多脚：通常4本に見えるアングル）
+    function drawLegs(ctx, bx, by, legPhase = 0, runMode = false) {
+      const legY = by + 7;
+      
+      if (!runMode) {
+        // 通常アイドル脚
+        const swing = Math.sin(legPhase) * 0.8;
+        
+        // 左奥脚
+        rect(ctx, bx - 3, legY, 2, 4, PALETTE.legDark);
+        rect(ctx, bx - 4, legY + 3, 2, 3, PALETTE.legFoot);
+        
+        // 左中脚
+        rect(ctx, bx, legY + 1, 2, 4, PALETTE.legDark);
+        rect(ctx, bx - 1, legY + 4, 2, 3, PALETTE.legFoot);
+
+        // 右後脚
+        rect(ctx, bx + 3, legY + 1, 2, 4, PALETTE.legMain);
+        rect(ctx, bx + 3, legY + 4, 2, 3, PALETTE.legFoot);
+
+        // 右前脚
+        rect(ctx, bx + 7, legY + 1 + Math.round(swing), 2, 4, PALETTE.legMain);
+        rect(ctx, bx + 8, legY + 4 + Math.round(swing), 2, 3, PALETTE.legFoot);
+      } else {
+        // 走行時の脚（前後に激しくステップ）
+        const s1 = Math.sin(legPhase);
+        const s2 = Math.sin(legPhase + Math.PI);
+
+        // 奥足
+        const offBack1 = Math.round(s1 * 2);
+        rect(ctx, bx - 4 + offBack1, legY, 2, 4, PALETTE.legDark);
+        rect(ctx, bx - 6 + offBack1, legY + 3, 3, 2, PALETTE.legFoot);
+
+        // 前足奥
+        const offFront1 = Math.round(s2 * 3);
+        rect(ctx, bx + 2 + offFront1, legY + 1, 2, 3, PALETTE.legDark);
+        rect(ctx, bx + 1 + offFront1, legY + 4, 3, 2, PALETTE.legFoot);
+
+        // 手前足2本
+        const offBack2 = Math.round(s2 * 3);
+        rect(ctx, bx - 1 + offBack2, legY + 1, 2, 4, PALETTE.legMain);
+        rect(ctx, bx - 3 + offBack2, legY + 4, 3, 2, PALETTE.legFoot);
+
+        const offFront2 = Math.round(s1 * 3);
+        rect(ctx, bx + 6 + offFront2, legY, 2, 4, PALETTE.legMain);
+        rect(ctx, bx + 7 + offFront2, legY + 3, 4, 2, PALETTE.legFoot);
+      }
+    }
+
+    // 腕（マニピュレーター）
+    function drawArm(ctx, ax, ay, angle = 'down', clawOpen = false) {
+      // 付け根
+      rect(ctx, ax, ay, 2, 2, PALETTE.armBase);
+
+      if (angle === 'down') {
+        rect(ctx, ax + 2, ay + 1, 2, 2, PALETTE.handMain);
+        rect(ctx, ax + 4, ay + 2, 2, 2, PALETTE.handLight);
+        // クロー
+        p(ctx, ax + 6, ay + 1, PALETTE.handClaw);
+        p(ctx, ax + 6, ay + 3, PALETTE.handClaw);
+      } else if (angle === 'up') {
+        rect(ctx, ax + 1, ay - 2, 2, 2, PALETTE.handMain);
+        rect(ctx, ax + 2, ay - 4, 2, 2, PALETTE.handLight);
+        p(ctx, ax + 1, ay - 5, PALETTE.handClaw);
+        p(ctx, ax + 3, ay - 5, PALETTE.handClaw);
+      } else if (angle === 'forward') {
+        rect(ctx, ax + 2, ay, 3, 2, PALETTE.handMain);
+        rect(ctx, ax + 5, ay, 2, 2, PALETTE.handLight);
+        p(ctx, ax + 7, ay - 1, PALETTE.handClaw);
+        p(ctx, ax + 7, ay + 1, PALETTE.handClaw);
+      } else if (angle === 'chin') {
+        rect(ctx, ax + 1, ay - 1, 2, 2, PALETTE.handMain);
+        rect(ctx, ax + 1, ay - 3, 2, 2, PALETTE.handLight);
+        p(ctx, ax, ay - 4, PALETTE.handClaw);
+        p(ctx, ax + 2, ay - 4, PALETTE.handClaw);
+      }
+    }
+
+
+    // 1. 通常・待機
+    function drawIdle(ctx, phase, t) {
+      const bob = Math.sin(phase) > 0.2 ? 1 : 0;
+      const bx = 11;
+      const by = 11 + bob;
+
+      // 影
+      rect(ctx, 7, 23, 19, 2, 'rgba(0,0,0,0.25)');
+
+      drawLegs(ctx, bx, by, phase);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      drawMainEye(ctx, bx + 6, by + 2);
+      drawArm(ctx, bx + 7, by + 6, 'down');
+    }
+
+    // 2. 挨拶（手を振る）
+    function drawWave(ctx, phase, t) {
+      const bx = 11;
+      const by = 12;
+
+      rect(ctx, 7, 23, 19, 2, 'rgba(0,0,0,0.25)');
+      drawLegs(ctx, bx, by, 0);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      drawMainEye(ctx, bx + 6, by + 2);
+
+      // 左手（下）
+      drawArm(ctx, bx + 5, by + 6, 'down');
+
+      // 右手（振る）
+      const wave = Math.sin(phase * 2) > 0 ? 1 : -1;
+      const wx = bx + 9 + wave;
+      const wy = by - 1;
+      
+      rect(ctx, bx + 8, by + 3, 2, 2, PALETTE.armBase);
+      rect(ctx, wx, wy + 2, 2, 2, PALETTE.handMain);
+      rect(ctx, wx + 1, wy, 2, 2, PALETTE.handLight);
+      // 手のハサミ
+      p(ctx, wx, wy - 1, PALETTE.handClaw);
+      p(ctx, wx + 2, wy - 1, PALETTE.handClaw);
+
+      // 振るモーション線（ドット）
+      if (wave > 0) {
+        p(ctx, wx + 4, wy - 2, PALETTE.dust);
+        p(ctx, wx + 5, wy, PALETTE.dust);
+      } else {
+        p(ctx, wx - 2, wy - 2, PALETTE.dust);
+        p(ctx, wx - 3, wy, PALETTE.dust);
+      }
+    }
+
+    // 3. 走る・移動
+    function drawRun(ctx, phase, t) {
+      const bob = Math.abs(Math.sin(phase)) * 2;
+      const bx = 12;
+      const by = 11 - Math.round(bob);
+
+      // 砂煙エフェクト (後ろへ流れる)
+      const dustStep = (t * 4) % 1;
+      const d1x = Math.floor(bx - 7 - dustStep * 4);
+      const d1y = 21 - Math.floor(dustStep * 2);
+      if (d1x > 1) {
+        rect(ctx, d1x, d1y, 2, 2, PALETTE.dust);
+        p(ctx, d1x - 1, d1y + 1, PALETTE.dust);
+      }
+
+      rect(ctx, 6, 23, 20, 2, 'rgba(0,0,0,0.25)');
+
+      // 少し前傾
+      drawLegs(ctx, bx, by, phase * 2, true);
+      drawBackPod(ctx, bx - 7, by - 2);
+      drawMainBody(ctx, bx, by);
+      drawMainEye(ctx, bx + 6, by + 2);
+
+      // 腕は前方ダッシュポーズ
+      drawArm(ctx, bx + 7, by + 5, 'forward');
+    }
+
+    // 4. 考える
+    function drawThinking(ctx, phase, t) {
+      const sway = Math.sin(phase) * 0.7;
+      const bx = 11 + Math.round(sway);
+      const by = 12;
+
+      rect(ctx, 7, 23, 19, 2, 'rgba(0,0,0,0.25)');
+      drawLegs(ctx, bx, by, 0);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      
+      // 目（少し上を見る）
+      drawMainEye(ctx, bx + 6, by + 1);
+
+      // 手をアゴに当てるポーズ
+      drawArm(ctx, bx + 6, by + 6, 'chin');
+
+      // 頭上に「？」マークが浮遊
+      const qBob = Math.sin(phase * 1.5) * 1.5;
+      const qx = bx + 9;
+      const qy = 2 + Math.round(qBob);
+      
+      // ドットのクエスチョンマーク
+      rect(ctx, qx, qy, 3, 1, PALETTE.yellow);
+      p(ctx, qx + 2, qy + 1, PALETTE.yellow);
+      p(ctx, qx + 1, qy + 2, PALETTE.yellow);
+      p(ctx, qx + 1, qy + 4, PALETTE.yellow); // 下の点
+    }
+
+    // 5. 喜ぶ・ジャンプ
+    function drawCelebrate(ctx, phase, t) {
+      // ジャンプ軌道
+      const jumpY = Math.abs(Math.sin(phase)) * 6;
+      const bx = 11;
+      const by = 14 - Math.round(jumpY);
+
+      // 影のサイズ変化
+      const shadowW = Math.max(8, 19 - Math.round(jumpY * 1.5));
+      rect(ctx, 16 - shadowW/2, 23, shadowW, 2, 'rgba(0,0,0,0.3)');
+
+      // ジャンプ中は脚が縮む
+      drawLegs(ctx, bx, by, 0);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      drawMainEye(ctx, bx + 6, by + 2);
+
+      // 両手を万歳！
+      drawArm(ctx, bx + 4, by + 4, 'up');
+      drawArm(ctx, bx + 8, by + 4, 'up');
+
+      // キラキラ星や音符
+      const sparkleFrame = Math.floor(t * 8) % 4;
+      if (sparkleFrame === 0 || sparkleFrame === 2) {
+        // 星 1 (左上)
+        p(ctx, 4, 6, PALETTE.yellow);
+        rect(ctx, 3, 7, 3, 1, PALETTE.yellow);
+        p(ctx, 4, 8, PALETTE.yellow);
+
+        // 音符 (右上)
+        p(ctx, 25, 4, PALETTE.musicPink);
+        rect(ctx, 25, 5, 2, 1, PALETTE.musicPink);
+        rect(ctx, 26, 6, 1, 3, PALETTE.musicPink);
+        rect(ctx, 24, 8, 2, 2, PALETTE.musicPink);
+      } else {
+        // 小さなキラキラ
+        p(ctx, 6, 8, PALETTE.sparkleGreen);
+        p(ctx, 24, 10, PALETTE.yellow);
+        p(ctx, 27, 6, PALETTE.white);
+      }
+    }
+
+    // 6. 焦る・パニック
+    function drawPanic(ctx, phase, t) {
+      // 細かく左右にプルプル震える
+      const jitter = (Math.sin(phase * 6) > 0 ? 1 : -1) * 0.8;
+      const bx = 11 + Math.round(jitter);
+      const by = 13;
+
+      rect(ctx, 7, 23, 19, 2, 'rgba(0,0,0,0.25)');
+      drawLegs(ctx, bx, by, 0);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      drawMainEye(ctx, bx + 6, by + 2);
+
+      // 手を前に出してオロオロ
+      drawArm(ctx, bx + 6, by + 6, 'forward');
+      drawArm(ctx, bx + 8, by + 6, 'down');
+
+      // 冷や汗（青いしずくが落ちる）
+      const sweatY = 8 + Math.floor((t * 2) % 1 * 7);
+      rect(ctx, bx + 12, sweatY, 1, 2, PALETTE.sweat);
+      p(ctx, bx + 13, sweatY + 1, PALETTE.sweat);
+
+      // 「！」ビックリマーク
+      p(ctx, bx + 9, 3, PALETTE.white);
+      rect(ctx, bx + 9, 5, 1, 3, PALETTE.white);
+    }
+
+    // 7. 驚く・警戒
+    function drawAlert(ctx, phase, t) {
+      // ハッとのけぞる
+      const recoil = Math.sin(phase) > 0 ? 1 : 0;
+      const bx = 10 - recoil;
+      const by = 11 - recoil;
+
+      rect(ctx, 7, 23, 19, 2, 'rgba(0,0,0,0.25)');
+      drawLegs(ctx, bx, by, 0);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      
+      // 目が見開く（瞳が小さくなる）
+      drawMainEye(ctx, bx + 6, by + 2, true);
+
+      drawArm(ctx, bx + 7, by + 6, 'down');
+
+      // 黄色い「！」アイコンが点滅
+      if (Math.sin(phase * 2) > -0.2) {
+        rect(ctx, bx + 9, 2, 2, 4, PALETTE.yellow);
+        rect(ctx, bx + 9, 7, 2, 2, PALETTE.yellow);
+      }
+    }
+
+    // 8. 作業中・PCカタカタ
+    function drawCoding(ctx, phase, t) {
+      const bx = 8;
+      const by = 12;
+
+      rect(ctx, 5, 23, 23, 2, 'rgba(0,0,0,0.25)');
+      drawLegs(ctx, bx, by, 0);
+      drawBackPod(ctx, bx - 6, by - 3);
+      drawMainBody(ctx, bx, by);
+      drawMainEye(ctx, bx + 6, by + 2);
+
+      // キーボード
+      rect(ctx, bx + 11, by + 8, 5, 2, PALETTE.keyboard);
+
+      // モニター
+      rect(ctx, bx + 15, by + 1, 6, 8, PALETTE.monitorCase);
+      rect(ctx, bx + 16, by + 2, 4, 6, PALETTE.monitorScreen);
+      rect(ctx, bx + 17, by + 9, 2, 2, PALETTE.monitorCase); // スタンド
+
+      // 画面内のコード点滅
+      const codeLine = Math.floor(t * 8) % 3;
+      p(ctx, bx + 17, by + 3 + codeLine, PALETTE.monitorCode);
+      p(ctx, bx + 18, by + 3 + codeLine, PALETTE.white);
+
+      // 両手が激しくカタカタ上下
+      const type1 = Math.sin(phase * 4) > 0 ? 1 : -1;
+      rect(ctx, bx + 9, by + 6 + type1, 2, 2, PALETTE.handMain);
+      p(ctx, bx + 11, by + 7 + type1, PALETTE.handClaw);
+
+      const type2 = Math.sin(phase * 4 + Math.PI) > 0 ? 1 : -1;
+      rect(ctx, bx + 10, by + 7 + type2, 2, 2, PALETTE.handLight);
+      p(ctx, bx + 12, by + 8 + type2, PALETTE.handClaw);
+    }
+
+    // 9. 休む・スリープ
+    function drawSleep(ctx, phase, t) {
+      // 伏せて低くなる
+      const bx = 11;
+      const by = 15;
+
+      rect(ctx, 6, 23, 21, 2, 'rgba(0,0,0,0.3)');
+
+      // 折りたたまれた脚
+      rect(ctx, bx - 4, by + 5, 3, 2, PALETTE.legDark);
+      rect(ctx, bx, by + 5, 3, 2, PALETTE.legMain);
+      rect(ctx, bx + 4, by + 5, 3, 2, PALETTE.legMain);
+
+      drawBackPod(ctx, bx - 6, by - 2);
+      drawMainBody(ctx, bx, by);
+      
+      // 目はスリープモード（細いスリット）
+      drawMainEye(ctx, bx + 6, by + 2, false, true);
+
+      // 手は胸元に収納
+      rect(ctx, bx + 6, by + 6, 3, 2, PALETTE.handMain);
+
+      // 「z」「Z」がぷかぷか昇る
+      const zProgress = (t * 1.5) % 1;
+      const z1y = Math.floor(12 - zProgress * 9);
+      const z1x = Math.floor(bx + 9 + zProgress * 4);
+      
+      if (z1y > 1) {
+        // 'Z' のドット文字
+        p(ctx, z1x, z1y, PALETTE.sleepZ);
+        p(ctx, z1x + 1, z1y, PALETTE.sleepZ);
+        p(ctx, z1x, z1y + 1, PALETTE.sleepZ);
+        p(ctx, z1x - 1, z1y + 2, PALETTE.sleepZ);
+        p(ctx, z1x, z1y + 2, PALETTE.sleepZ);
+      }
+    }
+
+    function initGallery() {
+      const grid = document.getElementById('cardsGrid');
+      grid.innerHTML = '';
+      instances = [];
+
+      POSES.forEach(pose => {
+        // カードHTML構築
+        const card = document.createElement('div');
+        card.className = "bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col justify-between hover:border-gray-700 hover:shadow-xl hover:shadow-blue-900/10 transition-all duration-200 group";
+        
+        card.innerHTML = `
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold px-2 py-0.5 rounded-full bg-blue-950 text-blue-400 border border-blue-800/60 mono-font">
+                No.${pose.id}
+              </span>
+              <span class="text-xs text-gray-500 mono-font">${pose.slug}</span>
+            </div>
+
+            <!-- キャンバスプレビューエリア -->
+            <div class="canvas-box relative w-full aspect-square rounded-xl flex items-center justify-center p-4 bg-gray-950 border border-gray-800/80 mb-4 overflow-hidden group-hover:border-blue-700/50 transition">
+              <canvas id="canvas_${pose.id}" width="160" height="160" class="pixelated w-36 h-36 rounded-lg cursor-pointer transition transform group-hover:scale-105"></canvas>
+              
+              <!-- 拡大ボタンオーバーレイ -->
+              <button class="inspect-btn absolute bottom-3 right-3 p-1.5 rounded-lg bg-gray-800/90 text-gray-300 hover:text-white hover:bg-blue-600 transition shadow opacity-0 group-hover:opacity-100" data-id="${pose.id}" title="詳細・拡大">
+                <i data-lucide="maximize-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <h3 class="text-base font-bold text-white pixel-font flex items-center gap-1.5">
+              <span>${pose.name}</span>
+            </h3>
+            <p class="text-xs text-gray-400 mt-1 line-clamp-2">${pose.sub}</p>
+          </div>
+
+          <!-- アクションフッター -->
+          <div class="mt-4 pt-3 border-t border-gray-800 flex items-center justify-between gap-2">
+            <button class="gif-btn flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs shadow-md transition" data-id="${pose.id}">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>GIF保存</span>
+            </button>
+            
+            <button class="png-btn py-2 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs border border-gray-700 transition" data-id="${pose.id}" title="PNG保存">
+              <i data-lucide="image" class="w-3.5 h-3.5"></i>
+            </button>
+
+            <button class="play-toggle-btn py-2 px-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs border border-gray-700 transition" data-id="${pose.id}" title="一時停止/再生">
+              <i data-lucide="pause" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        `;
+
+        grid.appendChild(card);
+
+        // Canvas初期化
+        const canvas = card.querySelector(`#canvas_${pose.id}`);
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        instances.push({
+          id: pose.id,
+          pose: pose,
+          canvas: canvas,
+          ctx: ctx,
+          playing: true,
+          startTime: performance.now(),
+          offscreen: document.createElement('canvas') // 32x32作業用
+        });
+      });
+
+      lucide.createIcons();
+      attachEventListeners();
+    }
+
+    function startAnimationLoop() {
+      // 作業用32x32バッファ
+      const buffer = document.createElement('canvas');
+      buffer.width = 32;
+      buffer.height = 32;
+      const bCtx = buffer.getContext('2d');
+      bCtx.imageSmoothingEnabled = false;
+
+      function loop(now) {
+        instances.forEach(inst => {
+          if (!inst.playing) return;
+
+          const duration = inst.pose.duration / currentSpeed;
+          const elapsed = (now - inst.startTime) % duration;
+          const progress = elapsed / duration;
+
+          // 32x32にレンダリング
+          drawPose(bCtx, inst.id, progress);
+
+          // 表示用キャンバス（160x160）へ拡大転送
+          inst.ctx.clearRect(0, 0, inst.canvas.width, inst.canvas.height);
+          inst.ctx.drawImage(buffer, 0, 0, inst.canvas.width, inst.canvas.height);
+
+          // モーダルが開いていて対象ポーズの場合、モーダル側も描画
+          if (isModalOpen && activeModalPose && activeModalPose.id === inst.id) {
+            const mCanvas = document.getElementById('modalCanvas');
+            const mCtx = mCanvas.getContext('2d');
+            mCtx.imageSmoothingEnabled = false;
+            mCtx.clearRect(0, 0, mCanvas.width, mCanvas.height);
+            mCtx.drawImage(buffer, 0, 0, mCanvas.width, mCanvas.height);
+          }
+        });
+
+        requestAnimationFrame(loop);
+      }
+
+      requestAnimationFrame(loop);
+    }
+
+    // 各ポーズをアニメーションGIFとして生成
+    async function exportGif(poseId) {
+      const pose = POSES.find(p => p.id === poseId);
+      if (!pose) return;
+
+      showToast(`No.${pose.id} "${pose.name}" のGIFを生成中...`, 'loader');
+
+      // 1ループ分のフレームをキャプチャ（128x128サイズで高品質に出力）
+      const frameCount = 12;
+      const size = 128;
+      const frames = [];
+
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = 32;
+      tempCanvas.height = 32;
+      const tempCtx = tempCanvas.getContext('2d');
+      tempCtx.imageSmoothingEnabled = false;
+
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = size;
+      exportCanvas.height = size;
+      const exportCtx = exportCanvas.getContext('2d');
+      exportCtx.imageSmoothingEnabled = false;
+
+      for (let i = 0; i < frameCount; i++) {
+        const progress = i / frameCount;
+
+        // 背景
+        exportCtx.clearRect(0, 0, size, size);
+        if (currentBgMode === 'dark') {
+          exportCtx.fillStyle = '#0f172a';
+          exportCtx.fillRect(0, 0, size, size);
+        } else if (currentBgMode === 'light') {
+          exportCtx.fillStyle = '#f8fafc';
+          exportCtx.fillRect(0, 0, size, size);
+        }
+        // checker/透明時はクリアのまま
+
+        // 描画
+        drawPose(tempCtx, pose.id, progress);
+        exportCtx.drawImage(tempCanvas, 0, 0, size, size);
+
+        frames.push(exportCanvas.toDataURL('image/png'));
+      }
+
+      // gifshot でGIF生成
+      gifshot.createGIF({
+        images: frames,
+        gifWidth: size,
+        gifHeight: size,
+        interval: (pose.duration / 1000 / frameCount),
+        numFrames: frameCount,
+        sampleInterval: 8
+      }, function (obj) {
+        if (!obj.error) {
+          const downloadLink = document.createElement('a');
+          downloadLink.href = obj.image;
+          downloadLink.download = `tachikoma_0${pose.id}_${pose.slug}.gif`;
+          document.body.appendChild(downloadLink);
+          downloadLink.click();
+          document.body.removeChild(downloadLink);
+
+          showToast(`No.${pose.id} のGIFをダウンロードしました！`, 'check-circle');
+        } else {
+          showToast('GIF生成中にエラーが発生しました', 'alert-circle');
+        }
+      });
+    }
+
+    // 静止画PNGのダウンロード
+    function exportPng(poseId) {
+      const inst = instances.find(i => i.id === poseId);
+      if (!inst) return;
+
+      const link = document.createElement('a');
+      link.download = `tachikoma_0${inst.pose.id}_${inst.pose.slug}.png`;
+      link.href = inst.canvas.toDataURL('image/png');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast(`No.${inst.pose.id} のPNGを保存しました`, 'check-circle');
+    }
+
+    function openModal(poseId) {
+      const pose = POSES.find(p => p.id === poseId);
+      if (!pose) return;
+
+      activeModalPose = pose;
+      isModalOpen = true;
+
+      document.getElementById('modalNumberBadge').textContent = `No.${pose.id}`;
+      document.getElementById('modalTitle').textContent = pose.name;
+      document.getElementById('modalDesc').textContent = pose.desc;
+      
+      const snippet = `<img src="tachikoma_0${pose.id}_${pose.slug}.gif" alt="${pose.name}" width="64" height="64" />`;
+      document.getElementById('htmlSnippet').textContent = snippet;
+
+      document.getElementById('modalOverlay').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      isModalOpen = false;
+      activeModalPose = null;
+      document.getElementById('modalOverlay').classList.add('hidden');
+    }
+
+    // トースト通知ヘルパー
+    let toastTimeout;
+    function showToast(msg, iconName = 'check-circle') {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toastMsg');
+      const toastIcon = document.getElementById('toastIcon');
+
+      toastMsg.textContent = msg;
+      toastIcon.setAttribute('data-lucide', iconName);
+      lucide.createIcons();
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    function attachEventListeners() {
+      // カード内の各種ボタン
+      document.querySelectorAll('.gif-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportGif(parseInt(btn.dataset.id));
+        });
+      });
+
+      document.querySelectorAll('.png-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          exportPng(parseInt(btn.dataset.id));
+        });
+      });
+
+      document.querySelectorAll('.inspect-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openModal(parseInt(btn.dataset.id));
+        });
+      });
+
+      document.querySelectorAll('.play-toggle-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const id = parseInt(btn.dataset.id);
+          const inst = instances.find(i => i.id === id);
+          if (inst) {
+            inst.playing = !inst.playing;
+            btn.innerHTML = `<i data-lucide="${inst.playing ? 'pause' : 'play'}" class="w-3.5 h-3.5"></i>`;
+            lucide.createIcons();
+          }
+        });
+      });
+
+      // Canvasクリックでモーダル
+      instances.forEach(inst => {
+        inst.canvas.addEventListener('click', () => openModal(inst.id));
+      });
+
+      // モーダルボタン
+      document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+      document.getElementById('modalOverlay').addEventListener('click', (e) => {
+        if (e.target.id === 'modalOverlay') closeModal();
+      });
+
+      document.getElementById('modalDownloadGifBtn').addEventListener('click', () => {
+        if (activeModalPose) exportGif(activeModalPose.id);
+      });
+
+      document.getElementById('modalDownloadPngBtn').addEventListener('click', () => {
+        if (activeModalPose) exportPng(activeModalPose.id);
+      });
+
+      document.getElementById('copyTagBtn').addEventListener('click', () => {
+        const text = document.getElementById('htmlSnippet').textContent;
+        const temp = document.createElement('textarea');
+        temp.value = text;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        showToast('HTMLコードをコピーしました！', 'copy');
+      });
+
+      // 速度セレクター
+      document.querySelectorAll('.speed-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.speed-btn').forEach(b => {
+            b.classList.remove('bg-blue-600', 'text-white', 'font-bold');
+            b.classList.add('bg-gray-700', 'text-gray-300');
+          });
+          btn.classList.remove('bg-gray-700', 'text-gray-300');
+          btn.classList.add('bg-blue-600', 'text-white', 'font-bold');
+          currentSpeed = parseFloat(btn.dataset.speed);
+        });
+      });
+
+      // 背景切り替え
+      const bgDarkBtn = document.getElementById('bgDarkBtn');
+      const bgTransBtn = document.getElementById('bgTransBtn');
+      const bgLightBtn = document.getElementById('bgLightBtn');
+
+      function updateBgMode(mode) {
+        currentBgMode = mode;
+        const boxes = document.querySelectorAll('.canvas-box, .preview-container');
+        boxes.forEach(box => {
+          box.classList.remove('bg-checker', 'bg-gray-950', 'bg-white');
+          if (mode === 'dark') box.classList.add('bg-gray-950');
+          if (mode === 'checker') box.classList.add('bg-checker');
+          if (mode === 'light') box.classList.add('bg-white');
+        });
+
+        // ボタンアクティブ表示
+        [bgDarkBtn, bgTransBtn, bgLightBtn].forEach(b => {
+          b.classList.remove('bg-blue-600', 'text-white');
+          b.classList.add('text-gray-300');
+        });
+        if (mode === 'dark') { bgDarkBtn.classList.add('bg-blue-600', 'text-white'); }
+        if (mode === 'checker') { bgTransBtn.classList.add('bg-blue-600', 'text-white'); }
+        if (mode === 'light') { bgLightBtn.classList.add('bg-blue-600', 'text-white'); }
+      }
+
+      bgDarkBtn.addEventListener('click', () => updateBgMode('dark'));
+      bgTransBtn.addEventListener('click', () => updateBgMode('checker'));
+      bgLightBtn.addEventListener('click', () => updateBgMode('light'));
+
+      // 一括全GIFダウンロード
+      document.getElementById('downloadAllGifBtn').addEventListener('click', async () => {
+        showToast('全9ポーズのGIFを順次作成・ダウンロードします...', 'download-cloud');
+        for (let i = 0; i < POSES.length; i++) {
+          await new Promise(resolve => {
+            setTimeout(() => {
+              exportGif(POSES[i].id);
+              resolve();
+            }, 600 * i);
+          });
+        }
+      });
+    }
+
+    window.onload = function () {
+      initGallery();
+      startAnimationLoop();
+    };
+  </script>
+</body>
+</html>
