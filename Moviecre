@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Offline Pro Video Editor</title>
+<style>
+  :root {
+    --bg-darkest: #121212;
+    --bg-dark: #1d1d1d;
+    --bg-panel: #252526;
+    --bg-header: #2d2d30;
+    --bg-hover: #3e3e42;
+    --border: #383838;
+    --accent: #3794ff;
+    --accent-hover: #1f7ce6;
+    --text-main: #e0e0e0;
+    --text-muted: #969696;
+    --playhead: #ff4444;
+    --clip-v1: #2b5b84;
+    --clip-v2: #6b4c9a;
+    --clip-a1: #2d7d46;
+  }
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: var(--bg-darkest);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 12px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* トップバー */
+  .topbar {
+    height: 38px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+  }
+  .topbar-left, .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .app-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    margin-right: 12px;
+  }
+
+  /* ボタン共通 */
+  button, .btn {
+    background: var(--bg-hover);
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.15s;
+  }
+  button:hover, .btn:hover {
+    background: #4e4e52;
+  }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent-hover);
+    color: #fff;
+    font-weight: 600;
+  }
+  button.primary:hover {
+    background: var(--accent-hover);
+  }
+  button.danger:hover {
+    background: #c42b1c;
+    color: #fff;
+  }
+  button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ワークスペース上部 (3ペイン) */
+  .upper-workspace {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 280px 1fr 310px;
+    gap: 4px;
+    background: var(--bg-darkest);
+    padding: 4px;
+    min-height: 0;
+  }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .panel-header {
+    height: 28px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  /* 左：メディアプール */
+  .dropzone {
+    border: 1px dashed var(--text-muted);
+    border-radius: 4px;
+    padding: 14px 8px;
+    text-align: center;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    cursor: pointer;
+  }
+  .dropzone:hover {
+    border-color: var(--accent);
+    color: var(--text-main);
+  }
+  .media-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .media-item {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .media-item-info {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 165px;
+  }
+  .media-badge {
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 2px;
+    margin-right: 5px;
+    font-weight: bold;
+    text-transform: uppercase;
+  }
+  .badge-video { background: var(--clip-v1); color: #fff; }
+  .badge-image { background: #8a5a2b; color: #fff; }
+  .badge-audio { background: var(--clip-a1); color: #fff; }
+
+  /* 中央：プログラムモニター */
+  .monitor-container {
+    flex: 1;
+    background: #090909;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  #previewCanvas {
+    max-width: 96%;
+    max-height: 94%;
+    background: #000;
+    box-shadow: 0 0 16px rgba(0,0,0,0.8);
+  }
+  .transport-bar {
+    height: 40px;
+    background: var(--bg-header);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 14px;
+  }
+  .timecode {
+    font-family: "Courier New", Consolas, monospace;
+    font-size: 15px;
+    font-weight: bold;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .transport-controls {
+    display: flex;
+    gap: 6px;
+  }
+
+  /* 右：エフェクト＆テロップ制御 */
+  .control-group {
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px;
+  }
+  .control-group-title {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--accent);
+  }
+  .control-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    gap: 8px;
+  }
+  .control-row label {
+    color: var(--text-muted);
+    min-width: 75px;
+  }
+  .control-row input[type="range"] {
+    flex: 1;
+    accent-color: var(--accent);
+  }
+  .control-row input[type="number"],
+  .control-row input[type="text"],
+  .control-row select {
+    background: var(--bg-dark);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 3px 6px;
+    border-radius: 3px;
+    width: 100%;
+    user-select: text;
+  }
+  .control-row input[type="number"] {
+    width: 60px;
+  }
+  .control-val {
+    width: 34px;
+    text-align: right;
+    font-family: monospace;
+  }
+
+  /* 下部：タイムライン */
+  .lower-workspace {
+    height: 290px;
+    padding: 0 4px 4px 4px;
+    display: flex;
+    flex-direction: column;
+  }
+  .timeline-toolbar {
+    height: 32px;
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 10px;
+  }
+  .timeline-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .timeline-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+  .track-headers {
+    width: 110px;
+    background: var(--bg-header);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding-top: 26px; /* ルーラー高さ分 */
+    z-index: 3;
+  }
+  .track-header {
+    height: 54px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+  .timeline-scroll {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+    position: relative;
+    background: var(--bg-dark);
+  }
+  .timeline-canvas-wrap {
+    position: relative;
+    min-width: 100%;
+    height: 100%;
+  }
+  .ruler {
+    height: 26px;
+    background: #181818;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .tracks-container {
+    position: relative;
+  }
+  .track-lane {
+    height: 54px;
+    border-bottom: 1px solid #2b2b2b;
+    position: relative;
+    background: repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 99px,
+      rgba(255,255,255,0.02) 99px,
+      rgba(255,255,255,0.02) 100px
+    );
+  }
+
+  /* タイムラインクリップ */
+  .clip {
+    position: absolute;
+    top: 5px;
+    height: 44px;
+    border-radius: 4px;
+    border: 1px solid rgba(255,255,255,0.25);
+    overflow: hidden;
+    cursor: grab;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    white-space: nowrap;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+  .clip:active {
+    cursor: grabbing;
+  }
+  .clip.v1 { background: var(--clip-v1); }
+  .clip.v2 { background: var(--clip-v2); }
+  .clip.a1 { background: var(--clip-a1); }
+  .clip.selected {
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 1px var(--accent);
+    z-index: 2;
+  }
+  .clip-handle {
+    position: absolute;
+    top: 0;
+    width: 7px;
+    height: 100%;
+    background: rgba(255,255,255,0.2);
+    cursor: ew-resize;
+  }
+  .clip-handle:hover {
+    background: rgba(255,255,255,0.6);
+  }
+  .clip-handle.left { left: 0; }
+  .clip-handle.right { right: 0; }
+
+  /* 再生ヘッド */
+  .playhead-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: var(--playhead);
+    pointer-events: none;
+    z-index: 10;
+  }
+  .playhead-cap {
+    position: absolute;
+    top: 0;
+    left: -6px;
+    width: 14px;
+    height: 14px;
+    background: var(--playhead);
+    clip-path: polygon(0 0, 100% 0, 100% 55%, 50% 100%, 0 55%);
+  }
+
+  /* 書き出し中オーバーレイ */
+  #exportOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 12px;
+    z-index: 100;
+  }
+  .progress-box {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    padding: 20px 30px;
+    border-radius: 6px;
+    text-align: center;
+    min-width: 300px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- トップバー -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <span class="app-title">PR-LITE STUDIO (OFFLINE)</span>
+      <button id="btnAddSample">＋ デモ用サンプルを生成</button>
+      <button id="btnAddText">＋ テロップ追加 (V2)</button>
+    </div>
+    <div class="topbar-right">
+      <label style="color:var(--text-muted);">解像度:</label>
+      <select id="canvasRes" style="background:var(--bg-dark);color:#fff;border:1px solid var(--border);padding:3px;">
+        <option value="1280x720">1280 x 720 (HD)</option>
+        <option value="1920x1080">1920 x 1080 (FHD)</option>
+      </select>
+      <button id="btnExport" class="primary">動画書き出し (WebM)</button>
+    </div>
+  </header>
+
+  <!-- 上部3ペイン -->
+  <div class="upper-workspace">
+    <!-- 左：プロジェクト（メディアプール） -->
+    <section class="panel">
+      <div class="panel-header">
+        <span>プロジェクト・メディア</span>
+        <span id="mediaCount">0 項目</span>
+      </div>
+      <div class="panel-body">
+        <div class="dropzone" id="dropzone">
+          クリックまたはドラッグ＆ドロップで<br>動画・画像・音声を読み込み
+          <input type="file" id="fileInput" multiple accept="video/*,image/*,audio/*" style="display:none;">
+        </div>
+        <div class="media-list" id="mediaList"></div>
+      </div>
+    </section>
+
+    <!-- 中央：プログラムモニター -->
+    <section class="panel">
+      <div class="panel-header">
+        <span>プログラムモニター</span>
+        <span id="statusText">待機中</span>
+      </div>
+      <div class="monitor-container">
+        <canvas id="previewCanvas" width="1280" height="720"></canvas>
+      </div>
+      <div class="transport-bar">
+        <div class="timecode" id="timecodeDisplay">00:00:00.0</div>
+        <div class="transport-controls">
+          <button id="btnToStart" title="先頭へ (Home)">|◀</button>
+          <button id="btnStepBack" title="1フレーム戻る (←)">◀</button>
+          <button id="btnPlayPause" class="primary" title="再生/停止 (Space)" style="min-width:70px;justify-content:center;">▶ 再生</button>
+          <button id="btnStepFwd" title="1フレーム進む (→)">▶</button>
+        </div>
+        <div style="color:var(--text-muted);font-family:monospace;" id="durationDisplay">総尺: 00:00.0</div>
+      </div>
+    </section>
+
+    <!-- 右：エフェクトコントロール -->
+    <section class="panel">
+      <div class="panel-header">
+        <span>エフェクトコントロール</span>
+        <span id="selectedClipLabel">未選択</span>
+      </div>
+      <div class="panel-body" id="inspectorPanel">
+        <div style="color:var(--text-muted);text-align:center;margin-top:40px;">
+          タイムライン上のクリップを選択すると<br>プロパティやエフェクトを編集できます。
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 下部：タイムライン -->
+  <div class="lower-workspace">
+    <section class="panel" style="flex:1;">
+      <div class="timeline-toolbar">
+        <div class="timeline-tools">
+          <button id="btnSplit" title="再生ヘッド位置で分割 (S / C)">✂ 分割 (カット)</button>
+          <button id="btnDuplicate" title="選択クリップを複製">❐ 複製</button>
+          <button id="btnDelete" class="danger" title="選択クリップを削除 (Delete)">🗑 削除</button>
+        </div>
+        <div class="timeline-tools">
+          <span style="color:var(--text-muted);">タイムライン拡大:</span>
+          <input type="range" id="zoomSlider" min="20" max="200" value="60" style="width:110px;">
+        </div>
+      </div>
+
+      <div class="timeline-area">
+        <div class="track-headers">
+          <div class="track-header"><span>V2 (オーバーレイ)</span></div>
+          <div class="track-header"><span>V1 (メイン映像)</span></div>
+          <div class="track-header"><span>A1 (オーディオ)</span></div>
+        </div>
+        <div class="timeline-scroll" id="timelineScroll">
+          <div class="timeline-canvas-wrap" id="timelineWrap">
+            <canvas class="ruler" id="rulerCanvas" height="26"></canvas>
+            <div class="tracks-container" id="tracksContainer">
+              <div class="track-lane" data-track="v2"></div>
+              <div class="track-lane" data-track="v1"></div>
+              <div class="track-lane" data-track="a1"></div>
+            </div>
+            <div class="playhead-line" id="playheadLine" style="left:0px;">
+              <div class="playhead-cap"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 書き出し中モーダル -->
+  <div id="exportOverlay">
+    <div class="progress-box">
+      <h3 style="margin-bottom:8px;">動画をレンダリング中...</h3>
+      <p id="exportProgressText" style="color:var(--text-muted);margin-bottom:14px;">0%</p>
+      <button id="btnCancelExport" class="danger">キャンセル</button>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // --- 状態管理 ---
+  const state = {
+    mediaPool: [],       // { id, name, type: 'video'|'image'|'audio', url, duration, element }
+    clips: [],           // タイムライン上のクリップ配列
+    selectedClipId: null,
+    currentTime: 0,      // 秒
+    isPlaying: false,
+    pxPerSec: 60,        // タイムラインのズーム倍率 (1秒あたりのピクセル数)
+    isExporting: false,
+    lastFrameTime: 0
+  };
+
+  // Web Audio API (音声ミキシングと書き出し用)
+  let audioCtx = null;
+  let audioDest = null;
+  const connectedElements = new WeakMap();
+
+  function initAudioContext() {
+    if (!audioCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContextClass();
+      audioDest = audioCtx.createMediaStreamDestination();
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  // DOM要素の参照
+  const canvas = document.getElementById('previewCanvas');
+  const ctx = canvas.getContext('2d');
+  const fileInput = document.getElementById('fileInput');
+  const dropzone = document.getElementById('dropzone');
+  const mediaList = document.getElementById('mediaList');
+  const mediaCount = document.getElementById('mediaCount');
+  const timecodeDisplay = document.getElementById('timecodeDisplay');
+  const durationDisplay = document.getElementById('durationDisplay');
+  const btnPlayPause = document.getElementById('btnPlayPause');
+  const inspectorPanel = document.getElementById('inspectorPanel');
+  const selectedClipLabel = document.getElementById('selectedClipLabel');
+  const timelineScroll = document.getElementById('timelineScroll');
+  const timelineWrap = document.getElementById('timelineWrap');
+  const rulerCanvas = document.getElementById('rulerCanvas');
+  const playheadLine = document.getElementById('playheadLine');
+  const zoomSlider = document.getElementById('zoomSlider');
+  const statusText = document.getElementById('statusText');
+
+  const uid = () => 'id_' + Math.random().toString(36).slice(2, 9);
+
+  // --- 時間フォーマット ---
+  function formatTimecode(sec) {
+    const s = Math.max(0, sec);
+    const mins = Math.floor(s / 60);
+    const secs = Math.floor(s % 60);
+    const tenths = Math.floor((s % 1) * 10);
+    return `00:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}.${tenths}`;
+  }
+
+  function getTotalDuration() {
+    if (state.clips.length === 0) return 10;
+    return Math.max(...state.clips.map(c => c.start + c.duration), 5);
+  }
+
+  // --- メディア読み込み ---
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.style.borderColor = '#3794ff'; });
+  dropzone.addEventListener('dragleave', () => { dropzone.style.borderColor = ''; });
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.style.borderColor = '';
+    handleFiles(e.dataTransfer.files);
+  });
+  fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+  function handleFiles(files) {
+    Array.from(files).forEach(file => {
+      const url = URL.createObjectURL(file);
+      const id = uid();
+      if (file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.preload = 'auto';
+        video.playsInline = true;
+        video.onloadedmetadata = () => {
+          const item = { id, name: file.name, type: 'video', url, duration: video.duration || 5 };
+          state.mediaPool.push(item);
+          renderMediaPool();
+          addClipFromMedia(item);
+        };
+      } else if (file.type.startsWith('image/')) {
+        const img = new Image();
+        img.src = url;
+        img.onload = () => {
+          const item = { id, name: file.name, type: 'image', url, duration: 5, imgElement: img };
+          state.mediaPool.push(item);
+          renderMediaPool();
+          addClipFromMedia(item);
+        };
+      } else if (file.type.startsWith('audio/')) {
+        const audio = new Audio(url);
+        audio.preload = 'auto';
+        audio.onloadedmetadata = () => {
+          const item = { id, name: file.name, type: 'audio', url, duration: audio.duration || 10 };
+          state.mediaPool.push(item);
+          renderMediaPool();
+          addClipFromMedia(item);
+        };
+      }
+    });
+  }
+
+  function renderMediaPool() {
+    mediaCount.textContent = `${state.mediaPool.length} 項目`;
+    mediaList.innerHTML = '';
+    state.mediaPool.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'media-item';
+      const badgeClass = item.type === 'video' ? 'badge-video' : item.type === 'image' ? 'badge-image' : 'badge-audio';
+      div.innerHTML = `
+        <div class="media-item-info" title="${item.name}">
+          <span class="media-badge ${badgeClass}">${item.type}</span>${item.name}
+        </div>
+        <button class="btn-add-tl" title="タイムラインに追加">＋配置</button>
+      `;
+      div.querySelector('.btn-add-tl').addEventListener('click', () => addClipFromMedia(item));
+      mediaList.appendChild(div);
+    });
+  }
+
+  // --- クリップ生成（各クリップ固有のメディア要素を持たせてシーク競合を防止） ---
+  function createClipInstanceElement(mediaItem) {
+    if (mediaItem.type === 'video') {
+      const v = document.createElement('video');
+      v.src = mediaItem.url;
+      v.preload = 'auto';
+      v.playsInline = true;
+      return v;
+    } else if (mediaItem.type === 'audio') {
+      const a = new Audio(mediaItem.url);
+      a.preload = 'auto';
+      return a;
+    } else if (mediaItem.type === 'image') {
+      return mediaItem.imgElement;
+    }
+    return null;
+  }
+
+  function connectAudioNode(mediaEl) {
+    if (!mediaEl || !(mediaEl instanceof HTMLMediaElement)) return null;
+    initAudioContext();
+    if (!connectedElements.has(mediaEl)) {
+      const source = audioCtx.createMediaElementSource(mediaEl);
+      const gain = audioCtx.createGain();
+      source.connect(gain);
+      gain.connect(audioCtx.destination);
+      gain.connect(audioDest);
+      connectedElements.set(mediaEl, gain);
+    }
+    return connectedElements.get(mediaEl);
+  }
+
+  function getTrackEndTime(track) {
+    const trackClips = state.clips.filter(c => c.track === track);
+    if (trackClips.length === 0) return 0;
+    return Math.max(...trackClips.map(c => c.start + c.duration));
+  }
+
+  function addClipFromMedia(mediaItem, targetTrack = null) {
+    const track = targetTrack || (mediaItem.type === 'audio' ? 'a1' : 'v1');
+    const start = getTrackEndTime(track);
+    const mediaEl = createClipInstanceElement(mediaItem);
+
+    const newClip = {
+      id: uid(),
+      mediaId: mediaItem.id,
+      name: mediaItem.name,
+      type: mediaItem.type,
+      track: track,
+      start: start,
+      duration: mediaItem.duration,
+      maxDuration: mediaItem.type === 'image' ? 300 : mediaItem.duration,
+      offset: 0, // メディア内の開始オフセット秒
+      element: mediaEl,
+      props: {
+        x: 0,
+        y: 0,
+        scale: 100,
+        opacity: 100,
+        volume: 100,
+        brightness: 100,
+        contrast: 100,
+        saturate: 100,
+        blur: 0
+      }
+    };
+
+    state.clips.push(newClip);
+    selectClip(newClip.id);
+    renderTimeline();
+    seekTo(state.currentTime);
+  }
+
+  // --- テロップ（テキストクリップ）追加 ---
+  document.getElementById('btnAddText').addEventListener('click', () => {
+    const newClip = {
+      id: uid(),
+      name: 'テロップ: サンプルテキスト',
+      type: 'text',
+      track: 'v2',
+      start: state.currentTime,
+      duration: 4,
+      maxDuration: 300,
+      offset: 0,
+      props: {
+        text: 'サンプルテキスト',
+        fontSize: 56,
+        color: '#ffffff',
+        strokeColor: '#000000',
+        bgBanner: true,
+        x: 0,
+        y: 240,
+        scale: 100,
+        opacity: 100
+      }
+    };
+    state.clips.push(newClip);
+    selectClip(newClip.id);
+    renderTimeline();
+    renderCanvasFrame();
+  });
+
+  // --- デモ用サンプル生成（動画ファイルが無くても即テスト可能） ---
+  document.getElementById('btnAddSample').addEventListener('click', () => {
+    const demoClip1 = {
+      id: uid(),
+      name: 'デモ映像 A (カウントダウン)',
+      type: 'procedural',
+      style: 'A',
+      track: 'v1',
+      start: 0,
+      duration: 5,
+      maxDuration: 30,
+      offset: 0,
+      props: { x: 0, y: 0, scale: 100, opacity: 100, brightness: 100, contrast: 100, saturate: 100, blur: 0 }
+    };
+    const demoClip2 = {
+      id: uid(),
+      name: 'デモ映像 B (グリッド波形)',
+      type: 'procedural',
+      style: 'B',
+      track: 'v1',
+      start: 5,
+      duration: 5,
+      maxDuration: 30,
+      offset: 0,
+      props: { x: 0, y: 0, scale: 100, opacity: 100, brightness: 100, contrast: 100, saturate: 100, blur: 0 }
+    };
+    const demoText = {
+      id: uid(),
+      name: 'テロップ: 完全オフライン編集',
+      type: 'text',
+      track: 'v2',
+      start: 0.5,
+      duration: 8.5,
+      maxDuration: 300,
+      offset: 0,
+      props: {
+        text: '完全オフライン・外部ライブラリゼロで動作中',
+        fontSize: 48,
+        color: '#ffffff',
+        strokeColor: '#000000',
+        bgBanner: true,
+        x: 0,
+        y: 250,
+        scale: 100,
+        opacity: 100
+      }
+    };
+    state.clips.push(demoClip1, demoClip2, demoText);
+    selectClip(demoText.id);
+    renderTimeline();
+    seekTo(0);
+  });
+
+  // --- タイムライン描画＆ドラッグ操作 ---
+  function renderTimeline() {
+    const totalSec = Math.max(getTotalDuration() + 10, 20);
+    const totalWidth = Math.max(totalSec * state.pxPerSec, timelineScroll.clientWidth);
+    timelineWrap.style.width = `${totalWidth}px`;
+
+    // ルーラー描画
+    rulerCanvas.width = totalWidth;
+    const rCtx = rulerCanvas.getContext('2d');
+    rCtx.clearRect(0, 0, totalWidth, 26);
+    rCtx.fillStyle = '#969696';
+    rCtx.strokeStyle = '#555';
+    rCtx.font = '10px monospace';
+
+    const stepSec = state.pxPerSec >= 90 ? 1 : state.pxPerSec >= 40 ? 2 : 5;
+    for (let s = 0; s <= totalSec; s += stepSec) {
+      const x = Math.floor(s * state.pxPerSec) + 0.5;
+      rCtx.beginPath();
+      rCtx.moveTo(x, 14);
+      rCtx.lineTo(x, 26);
+      rCtx.stroke();
+      rCtx.fillText(formatTimecode(s).slice(3), x + 4, 12);
+    }
+
+    // トラック内のクリップ描画
+    document.querySelectorAll('.track-lane').forEach(lane => lane.innerHTML = '');
+
+    state.clips.forEach(clip => {
+      const lane = document.querySelector(`.track-lane[data-track="${clip.track}"]`);
+      if (!lane) return;
+
+      const el = document.createElement('div');
+      el.className = `clip ${clip.track} ${state.selectedClipId === clip.id ? 'selected' : ''}`;
+      el.style.left = `${clip.start * state.pxPerSec}px`;
+      el.style.width = `${Math.max(clip.duration * state.pxPerSec, 6)}px`;
+      el.innerHTML = `
+        <div class="clip-handle left"></div>
+        <span style="pointer-events:none;overflow:hidden;text-overflow:ellipsis;">${clip.name}</span>
+        <div class="clip-handle right"></div>
+      `;
+
+      // クリップ選択＆移動ドラッグ
+      el.addEventListener('mousedown', e => {
+        e.stopPropagation();
+        selectClip(clip.id);
+
+        const isLeftHandle = e.target.classList.contains('left');
+        const isRightHandle = e.target.classList.contains('right');
+        const startX = e.clientX;
+        const origStart = clip.start;
+        const origDur = clip.duration;
+        const origOffset = clip.offset;
+
+        const onMove = moveEvent => {
+          const deltaSec = (moveEvent.clientX - startX) / state.pxPerSec;
+          if (isLeftHandle) {
+            const maxDelta = origDur - 0.2;
+            const minDelta = -origOffset;
+            const clamped = Math.max(minDelta, Math.min(maxDelta, deltaSec));
+            if (origStart + clamped >= 0) {
+              clip.start = origStart + clamped;
+              clip.offset = origOffset + clamped;
+              clip.duration = origDur - clamped;
+            }
+          } else if (isRightHandle) {
+            const maxDur = clip.maxDuration - clip.offset;
+            clip.duration = Math.max(0.2, Math.min(maxDur, origDur + deltaSec));
+          } else {
+            clip.start = Math.max(0, origStart + deltaSec);
+          }
+          renderTimeline();
+          renderCanvasFrame();
+        };
+
+        const onUp = () => {
+          window.removeEventListener('mousemove', onMove);
+          window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+      });
+
+      lane.appendChild(el);
+    });
+
+    updatePlayheadUI();
+    durationDisplay.textContent = `総尺: ${formatTimecode(getTotalDuration()).slice(3)}`;
+  }
+
+  function updatePlayheadUI() {
+    playheadLine.style.left = `${state.currentTime * state.pxPerSec}px`;
+    timecodeDisplay.textContent = formatTimecode(state.currentTime);
+  }
+
+  // ルーラークリック・ドラッグでシーク
+  let isScrubbing = false;
+  rulerCanvas.addEventListener('mousedown', e => {
+    isScrubbing = true;
+    pausePlayback();
+    seekFromMouse(e);
+  });
+  window.addEventListener('mousemove', e => {
+    if (isScrubbing) seekFromMouse(e);
+  });
+  window.addEventListener('mouseup', () => { isScrubbing = false; });
+
+  function seekFromMouse(e) {
+    const rect = rulerCanvas.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const targetSec = Math.max(0, clickX / state.pxPerSec);
+    seekTo(targetSec);
+  }
+
+  zoomSlider.addEventListener('input', e => {
+    state.pxPerSec = Number(e.target.value);
+    renderTimeline();
+  });
+
+  // --- エフェクトコントロール（インスペクター） ---
+  function selectClip(id) {
+    state.selectedClipId = id;
+    renderTimeline();
+    renderInspector();
+  }
+
+  function renderInspector() {
+    const clip = state.clips.find(c => c.id === state.selectedClipId);
+    if (!clip) {
+      selectedClipLabel.textContent = '未選択';
+      inspectorPanel.innerHTML = `<div style="color:var(--text-muted);text-align:center;margin-top:40px;">タイムライン上のクリップを選択すると<br>プロパティやエフェクトを編集できます。</div>`;
+      return;
+    }
+
+    selectedClipLabel.textContent = clip.name;
+    const p = clip.props;
+    let html = '';
+
+    if (clip.type === 'text') {
+      html += `
+        <div class="control-group">
+          <div class="control-group-title">テロップ設定</div>
+          <div class="control-row">
+            <label>テキスト</label>
+            <input type="text" id="propText" value="${p.text}">
+          </div>
+          <div class="control-row">
+            <label>サイズ</label>
+            <input type="range" id="propFontSize" min="16" max="140" value="${p.fontSize}">
+            <span class="control-val">${p.fontSize}</span>
+          </div>
+          <div class="control-row">
+            <label>文字色 / 縁色</label>
+            <input type="color" id="propColor" value="${p.color}">
+            <input type="color" id="propStroke" value="${p.strokeColor}">
+          </div>
+          <div class="control-row">
+            <label>半透明背景帯</label>
+            <input type="checkbox" id="propBgBanner" ${p.bgBanner ? 'checked' : ''}>
+          </div>
+        </div>
+      `;
+    }
+
+    if (clip.type !== 'audio') {
+      html += `
+        <div class="control-group">
+          <div class="control-group-title">モーション (変形)</div>
+          <div class="control-row">
+            <label>位置 X</label>
+            <input type="range" id="propX" min="-640" max="640" value="${p.x}">
+            <span class="control-val">${p.x}</span>
+          </div>
+          <div class="control-row">
+            <label>位置 Y</label>
+            <input type="range" id="propY" min="-360" max="360" value="${p.y}">
+            <span class="control-val">${p.y}</span>
+          </div>
+          <div class="control-row">
+            <label>スケール(%)</label>
+            <input type="range" id="propScale" min="10" max="300" value="${p.scale}">
+            <span class="control-val">${p.scale}%</span>
+          </div>
+          <div class="control-row">
+            <label>不透明度(%)</label>
+            <input type="range" id="propOpacity" min="0" max="100" value="${p.opacity}">
+            <span class="control-val">${p.opacity}%</span>
+          </div>
+        </div>
+      `;
+    }
+
+    if (clip.type === 'video' || clip.type === 'image' || clip.type === 'procedural') {
+      html += `
+        <div class="control-group">
+          <div class="control-group-title">カラー＆ブラー</div>
+          <div class="control-row">
+            <label>明るさ</label>
+            <input type="range" id="propBrightness" min="0" max="200" value="${p.brightness}">
+            <span class="control-val">${p.brightness}%</span>
+          </div>
+          <div class="control-row">
+            <label>コントラスト</label>
+            <input type="range" id="propContrast" min="0" max="200" value="${p.contrast}">
+            <span class="control-val">${p.contrast}%</span>
+          </div>
+          <div class="control-row">
+            <label>彩度</label>
+            <input type="range" id="propSaturate" min="0" max="300" value="${p.saturate}">
+            <span class="control-val">${p.saturate}%</span>
+          </div>
+          <div class="control-row">
+            <label>ブラー(ぼかし)</label>
+            <input type="range" id="propBlur" min="0" max="20" value="${p.blur}">
+            <span class="control-val">${p.blur}px</span>
+          </div>
+        </div>
+      `;
+    }
+
+    if (clip.type === 'video' || clip.type === 'audio') {
+      html += `
+        <div class="control-group">
+          <div class="control-group-title">オーディオ</div>
+          <div class="control-row">
+            <label>音量(%)</label>
+            <input type="range" id="propVolume" min="0" max="200" value="${p.volume}">
+            <span class="control-val">${p.volume}%</span>
+          </div>
+        </div>
+      `;
+    }
+
+    inspectorPanel.innerHTML = html;
+
+    // イベントバインド
+    const bindSlider = (id, key, suffix = '') => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', e => {
+        p[key] = Number(e.target.value);
+        if (el.nextElementSibling) el.nextElementSibling.textContent = p[key] + suffix;
+        renderCanvasFrame();
+      });
+    };
+
+    bindSlider('propFontSize', 'fontSize');
+    bindSlider('propX', 'x');
+    bindSlider('propY', 'y');
+    bindSlider('propScale', 'scale', '%');
+    bindSlider('propOpacity', 'opacity', '%');
+    bindSlider('propBrightness', 'brightness', '%');
+    bindSlider('propContrast', 'contrast', '%');
+    bindSlider('propSaturate', 'saturate', '%');
+    bindSlider('propBlur', 'blur', 'px');
+    bindSlider('propVolume', 'volume', '%');
+
+    const textEl = document.getElementById('propText');
+    if (textEl) {
+      textEl.addEventListener('input', e => {
+        p.text = e.target.value;
+        clip.name = `テロップ: ${p.text || '無題'}`;
+        renderTimeline();
+        renderCanvasFrame();
+      });
+    }
+    const colEl = document.getElementById('propColor');
+    if (colEl) colEl.addEventListener('input', e => { p.color = e.target.value; renderCanvasFrame(); });
+    const strEl = document.getElementById('propStroke');
+    if (strEl) strEl.addEventListener('input', e => { p.strokeColor = e.target.value; renderCanvasFrame(); });
+    const bgEl = document.getElementById('propBgBanner');
+    if (bgEl) bgEl.addEventListener('change', e => { p.bgBanner = e.target.checked; renderCanvasFrame(); });
+  }
+
+  // --- クリップ編集操作（分割・複製・削除） ---
+  function splitSelectedClip() {
+    let target = state.clips.find(c => c.id === state.selectedClipId);
+    // 選択クリップが再生ヘッド上に無ければ、再生ヘッド上のクリップを自動対象にする
+    if (!target || state.currentTime <= target.start + 0.05 || state.currentTime >= target.start + target.duration - 0.05) {
+      target = state.clips.find(c => state.currentTime > c.start + 0.05 && state.currentTime < c.start + c.duration - 0.05);
+    }
+    if (!target) return;
+
+    const splitOffset = state.currentTime - target.start;
+    const secondDuration = target.duration - splitOffset;
+    target.duration = splitOffset;
+
+    const mediaItem = state.mediaPool.find(m => m.id === target.mediaId);
+    const secondClip = {
+      ...target,
+      id: uid(),
+      start: state.currentTime,
+      duration: secondDuration,
+      offset: target.offset + splitOffset,
+      element: mediaItem ? createClipInstanceElement(mediaItem) : null,
+      props: { ...target.props }
+    };
+
+    state.clips.push(secondClip);
+    selectClip(secondClip.id);
+    renderTimeline();
+    seekTo(state.currentTime);
+  }
+
+  function deleteSelectedClip() {
+    if (!state.selectedClipId) return;
+    const clip = state.clips.find(c => c.id === state.selectedClipId);
+    if (clip && clip.element instanceof HTMLMediaElement) {
+      clip.element.pause();
+    }
+    state.clips = state.clips.filter(c => c.id !== state.selectedClipId);
+    state.selectedClipId = null;
+    renderTimeline();
+    renderInspector();
+    renderCanvasFrame();
+  }
+
+  function duplicateSelectedClip() {
+    const clip = state.clips.find(c => c.id === state.selectedClipId);
+    if (!clip) return;
+    const mediaItem = state.mediaPool.find(m => m.id === clip.mediaId);
+    const copy = {
+      ...clip,
+      id: uid(),
+      start: clip.start + clip.duration,
+      element: mediaItem ? createClipInstanceElement(mediaItem) : null,
+      props: { ...clip.props }
+    };
+    state.clips.push(copy);
+    selectClip(copy.id);
+    renderTimeline();
+    renderCanvasFrame();
+  }
+
+  document.getElementById('btnSplit').addEventListener('click', splitSelectedClip);
+  document.getElementById('btnDelete').addEventListener('click', deleteSelectedClip);
+  document.getElementById('btnDuplicate').addEventListener('click', duplicateSelectedClip);
+
+  // --- シーク＆再生エンジン ---
+  function seekTo(sec) {
+    state.currentTime = Math.max(0, sec);
+    updatePlayheadUI();
+
+    // 各メディア要素の時刻を同期
+    state.clips.forEach(clip => {
+      if (clip.element instanceof HTMLMediaElement) {
+        const isActive = state.currentTime >= clip.start && state.currentTime < clip.start + clip.duration;
+        if (isActive) {
+          const targetMediaTime = clip.offset + (state.currentTime - clip.start);
+          if (Math.abs(clip.element.currentTime - targetMediaTime) > 0.08) {
+            clip.element.currentTime = targetMediaTime;
+          }
+        } else {
+          clip.element.pause();
+        }
+      }
+    });
+
+    renderCanvasFrame();
+    // 動画シーク完了後にもう一度再描画してフレームを確実に反映
+    setTimeout(renderCanvasFrame, 45);
+  }
+
+  function startPlayback() {
+    initAudioContext();
+    if (state.currentTime >= getTotalDuration()) {
+      seekTo(0);
+    }
+    state.isPlaying = true;
+    state.lastFrameTime = performance.now();
+    btnPlayPause.textContent = '⏸ 停止';
+    statusText.textContent = state.isExporting ? 'レンダリング中...' : '再生中';
+    requestAnimationFrame(playbackLoop);
+  }
+
+  function pausePlayback() {
+    state.isPlaying = false;
+    btnPlayPause.textContent = '▶ 再生';
+    statusText.textContent = '待機中';
+    state.clips.forEach(clip => {
+      if (clip.element instanceof HTMLMediaElement) {
+        clip.element.pause();
+      }
+    });
+  }
+
+  function playbackLoop(now) {
+    if (!state.isPlaying) return;
+    const dt = (now - state.lastFrameTime) / 1000;
+    state.lastFrameTime = now;
+    state.currentTime += dt;
+
+    const totalDur = getTotalDuration();
+    if (state.currentTime >= totalDur) {
+      state.currentTime = totalDur;
+      updatePlayheadUI();
+      renderCanvasFrame();
+      pausePlayback();
+      if (state.isExporting && activeRecorder) {
+        activeRecorder.stop();
+      }
+      return;
+    }
+
+    // クリップ内のメディア再生同期
+    state.clips.forEach(clip => {
+      if (clip.element instanceof HTMLMediaElement) {
+        const isActive = state.currentTime >= clip.start && state.currentTime < clip.start + clip.duration;
+        const gainNode = connectAudioNode(clip.element);
+        if (gainNode) {
+          gainNode.gain.value = (clip.props.volume ?? 100) / 100;
+        }
+        if (isActive) {
+          const expectedTime = clip.offset + (state.currentTime - clip.start);
+          if (Math.abs(clip.element.currentTime - expectedTime) > 0.25) {
+            clip.element.currentTime = expectedTime;
+          }
+          if (clip.element.paused) {
+            clip.element.play().catch(() => {});
+          }
+        } else if (!clip.element.paused) {
+          clip.element.pause();
+        }
+      }
+    });
+
+    updatePlayheadUI();
+    renderCanvasFrame();
+
+    if (state.isExporting) {
+      const pct = Math.min(100, Math.round((state.currentTime / totalDur) * 100));
+      document.getElementById('exportProgressText').textContent = `${pct}% (${formatTimecode(state.currentTime)})`;
+    }
+
+    requestAnimationFrame(playbackLoop);
+  }
+
+  // --- Canvas合成レンダラー ---
+  function renderCanvasFrame() {
+    ctx.save();
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // トラック順（V1 -> V2の順で重ね塗り）
+    const activeClips = state.clips
+      .filter(c => c.track !== 'a1' && state.currentTime >= c.start && state.currentTime < c.start + c.duration)
+      .sort((a, b) => (a.track === 'v1' ? -1 : 1));
+
+    activeClips.forEach(clip => {
+      const p = clip.props;
+      ctx.save();
+      ctx.globalAlpha = (p.opacity ?? 100) / 100;
+
+      const scale = (p.scale ?? 100) / 100;
+      const centerX = canvas.width / 2 + (p.x || 0);
+      const centerY = canvas.height / 2 + (p.y || 0);
+      ctx.translate(centerX, centerY);
+      ctx.scale(scale, scale);
+
+      if (clip.type === 'video' || clip.type === 'image') {
+        ctx.filter = `brightness(${p.brightness}%) contrast(${p.contrast}%) saturate(${p.saturate}%) blur(${p.blur}px)`;
+        const el = clip.element;
+        if (el) {
+          const w = el.videoWidth || el.naturalWidth || canvas.width;
+          const h = el.videoHeight || el.naturalHeight || canvas.height;
+          // アスペクト比を維持してキャンバス内にフィット
+          const ratio = Math.min(canvas.width / w, canvas.height / h);
+          const drawW = w * ratio;
+          const drawH = h * ratio;
+          ctx.drawImage(el, -drawW / 2, -drawH / 2, drawW, drawH);
+        }
+      } else if (clip.type === 'procedural') {
+        ctx.filter = `brightness(${p.brightness}%) contrast(${p.contrast}%) saturate(${p.saturate}%) blur(${p.blur}px)`;
+        drawProceduralClip(ctx, clip, state.currentTime - clip.start);
+      } else if (clip.type === 'text') {
+        ctx.font = `bold ${p.fontSize}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const metrics = ctx.measureText(p.text);
+        const padX = 28;
+        const padY = p.fontSize * 0.7;
+
+        if (p.bgBanner) {
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+          ctx.fillRect(-metrics.width / 2 - padX, -padY, metrics.width + padX * 2, padY * 2);
+        }
+        ctx.lineWidth = Math.max(4, p.fontSize * 0.12);
+        ctx.strokeStyle = p.strokeColor || '#000';
+        ctx.strokeText(p.text, 0, 0);
+        ctx.fillStyle = p.color || '#fff';
+        ctx.fillText(p.text, 0, 0);
+      }
+
+      ctx.restore();
+    });
+
+    ctx.restore();
+  }
+
+  // デモ用プロシージャル映像描画
+  function drawProceduralClip(ctx, clip, localTime) {
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.save();
+    ctx.translate(-w / 2, -h / 2);
+
+    if (clip.style === 'A') {
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0, '#0f2027');
+      grad.addColorStop(0.5, '#203a43');
+      grad.addColorStop(1, '#2c5364');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // 回転サークルとカウント
+      ctx.strokeStyle = 'rgba(55, 148, 255, 0.5)';
+      ctx.lineWidth = 8;
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, 160, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.strokeStyle = '#3794ff';
+      ctx.beginPath();
+      ctx.arc(w / 2, h / 2, 160, -Math.PI / 2, -Math.PI / 2 + (localTime % 1) * Math.PI * 2);
+      ctx.stroke();
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 110px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(Math.ceil(clip.duration - localTime), w / 2, h / 2);
+    } else {
+      ctx.fillStyle = '#1b1429';
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = '#8e44ad';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 20) {
+        const y = h / 2 + Math.sin(x * 0.015 + localTime * 5) * 120;
+        if (x === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // --- トランスポート＆キーボードショートカット ---
+  btnPlayPause.addEventListener('click', () => {
+    if (state.isPlaying) pausePlayback();
+    else startPlayback();
+  });
+  document.getElementById('btnToStart').addEventListener('click', () => {
+    pausePlayback();
+    seekTo(0);
+  });
+  document.getElementById('btnStepBack').addEventListener('click', () => {
+    pausePlayback();
+    seekTo(state.currentTime - 1 / 30);
+  });
+  document.getElementById('btnStepFwd').addEventListener('click', () => {
+    pausePlayback();
+    seekTo(state.currentTime + 1 / 30);
+  });
+
+  document.getElementById('canvasRes').addEventListener('change', e => {
+    const [w, h] = e.target.value.split('x').map(Number);
+    canvas.width = w;
+    canvas.height = h;
+    renderCanvasFrame();
+  });
+
+  window.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (state.isPlaying) pausePlayback();
+      else startPlayback();
+    } else if (e.code === 'KeyS' || e.code === 'KeyC') {
+      splitSelectedClip();
+    } else if (e.code === 'Delete' || e.code === 'Backspace') {
+      deleteSelectedClip();
+    } else if (e.code === 'ArrowLeft') {
+      pausePlayback();
+      seekTo(state.currentTime - 1 / 30);
+    } else if (e.code === 'ArrowRight') {
+      pausePlayback();
+      seekTo(state.currentTime + 1 / 30);
+    }
+  });
+
+  // --- ローカル動画書き出し (MediaRecorder) ---
+  let activeRecorder = null;
+
+  document.getElementById('btnExport').addEventListener('click', () => {
+    if (state.clips.length === 0) {
+      alert('タイムラインにクリップがありません。');
+      return;
+    }
+    initAudioContext();
+    pausePlayback();
+    seekTo(0);
+
+    const canvasStream = canvas.captureStream(30);
+    const combinedTracks = [
+      ...canvasStream.getVideoTracks(),
+      ...(audioDest ? audioDest.stream.getAudioTracks() : [])
+    ];
+    const combinedStream = new MediaStream(combinedTracks);
+
+    const mimeTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm'
+    ];
+    const mimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || '';
+
+    const chunks = [];
+    activeRecorder = new MediaRecorder(combinedStream, mimeType ? { mimeType, videoBitsPerSecond: 5000000 } : {});
+
+    activeRecorder.ondataavailable = e => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    };
+
+    activeRecorder.onstop = () => {
+      document.getElementById('exportOverlay').style.display = 'none';
+      if (!state.isExporting) return; // キャンセルされた場合
+      state.isExporting = false;
+      const blob = new Blob(chunks, { type: mimeType || 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `edited_video_${Date.now()}.webm`;
+      a.click();
+    };
+
+    state.isExporting = true;
+    document.getElementById('exportOverlay').style.display = 'flex';
+    activeRecorder.start(100);
+    startPlayback();
+  });
+
+  document.getElementById('btnCancelExport').addEventListener('click', () => {
+    state.isExporting = false;
+    pausePlayback();
+    if (activeRecorder && activeRecorder.state !== 'inactive') {
+      activeRecorder.stop();
+    }
+    document.getElementById('exportOverlay').style.display = 'none';
+  });
+
+  // 初期描画
+  renderTimeline();
+  renderCanvasFrame();
+})();
+</script>
+</body>
+</html>
